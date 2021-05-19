@@ -16,10 +16,38 @@
 #define NAME_SIZE       30
 #define MAX_SOCKS       100
 
+int client[MAX_SOCKS];
+char names[MAX_SOCKS][NAME_SIZE];
+
 void error_handling(char *message)
 {
     perror(message);
     exit(0);
+}
+
+// SEND TO ALL CLIENTS
+void sendAll(int clnt_cnt, int cmdcode, char *sender, char *msg, char *servlog)
+{
+    char message[BUF_SIZE];
+    memset(message, 0, BUF_SIZE);
+    
+    // APPEND CMDCODE
+    sprintf(message, "%d", cmdcode);
+    // APPEND NAME OF SENDER
+    sprintf(&message[CMDCODE_SIZE + 1], "%s", sender);
+    // APPEND MESSAGE
+    sprintf(&message[CMDCODE_SIZE + NAME_SIZE + 2], "%s", msg);
+    
+    if (servlog) printf("\nMESSAGE FROM SERVER: %s\n", servlog);
+
+    for (int i = 0; i < clnt_cnt; i++)
+    {
+        // DISCARD DISCONNECTED OR NAMELESS CLIENTS
+        if (client[i] < 0 || names[i][0] == 0) continue;
+
+        write(client[i], message, BUF_SIZE);
+        printf("Sent to client [%d] (%s)\n", client[i], names[i]);
+    }
 }
 
 int main(int argc, char **argv)
@@ -36,9 +64,8 @@ int main(int argc, char **argv)
     fd_set readfds, otherfds, allfds;
     
     char buf[BUF_SIZE], message[BUF_SIZE];
-    int client[MAX_SOCKS];
-    char names[MAX_SOCKS][NAME_SIZE];
-    int i, j, clnt_sz, clnt_cnt, fd_max;
+    char serv_name[NAME_SIZE] = "SERVER";
+    int i, j, clnt_size, clnt_cnt, fd_max;
 
     state = 0;
 
@@ -78,8 +105,8 @@ int main(int argc, char **argv)
         // ACCEPT CLIENT TO SERVER SOCK
         if (FD_ISSET(serv_sock, &allfds))
         {
-            clnt_sz = sizeof(clnt_addr);
-            clnt_sock = accept(serv_sock, (struct sockaddr*)&clnt_addr, &clnt_sz);
+            clnt_size = sizeof(clnt_addr);
+            clnt_sock = accept(serv_sock, (struct sockaddr*)&clnt_addr, &clnt_size);
             printf("Connection from (%s, %d)\n", inet_ntoa(clnt_addr.sin_addr), ntohs(clnt_addr.sin_port));
 
             for (i = 0; i < MAX_SOCKS; i++)
@@ -98,9 +125,10 @@ int main(int argc, char **argv)
             if (i == MAX_SOCKS) perror("Too many clients!\n");
 
             FD_SET(clnt_sock, &readfds);
+            memset(names[i], 0, NAME_SIZE);
 
             if (clnt_sock > fd_max) fd_max = clnt_sock;
-            if (i > clnt_cnt)       clnt_cnt = i + 1;
+            if (i + 1 > clnt_cnt)       clnt_cnt = i + 1;
             if (--state <= 0)       continue;
         }
 
@@ -123,16 +151,27 @@ int main(int argc, char **argv)
                     close(client[i]);
                     FD_CLR(client[i], &readfds);
                     client[i] = -1;
-                    memset(names[i], 0, NAME_SIZE);
+
+                    // IF NAME WAS SET (HAD ACTUALLY ENGAGED IN CHAT)
+                    if (names[i][0])
+                    {
+                        // SEND DISCONNECT INFORMATION TO ALL CLIENTS
+                        memset(message, 0, BUF_SIZE);
+                        sprintf(message, "%s left the chat.", names[i]);
+                        sendAll(clnt_cnt, 1000, serv_name, message, message);
+
+                        memset(names[i], 0, NAME_SIZE);
+                    }
                 }
 
                 else
                 {
                     int cmdcode = atoi(buf);
 
-                    printf("Received from [%d] (%s): %s %s\n", client[i], names[i], buf, &buf[CMDCODE_SIZE + 1]);
+                    printf("\nReceived from [%d] (%s): %s %s\n", client[i], names[i], buf, &buf[CMDCODE_SIZE + 1]);
 
-                    if (cmdcode == 1000)  // MODE: SET NAME
+                    // MODE: SET NAME
+                    if (cmdcode == 2000)
                     {
                         // CHECK IF REQUESTED NAME IS TAKEN
                         int taken = 0;
@@ -146,28 +185,22 @@ int main(int argc, char **argv)
                             write(client[i], "1", 2);  // ACCEPTED
 
                             memset(names[i], 0, NAME_SIZE);
-                            strcpy(names[i], &buf[CMDCODE_SIZE + 1]);
+                            sprintf(names[i], "%s", &buf[CMDCODE_SIZE + 1]);
                             printf("Set name of client [%d] as [%s]\n", client[i], names[i]);
+
+                            // SEND JOIN INFORMATION TO ALL CLIENTS
+                            memset(message, 0, BUF_SIZE);
+                            sprintf(message, "%s joined the chat!", names[i]);
+                            sendAll(clnt_cnt, 1000, serv_name, message, message);
                         }
                     }
 
-                    else if (cmdcode == 2000)  // MODE: MESSAGE
+                    // MODE: MESSAGE
+                    else if (cmdcode == 3000)
                     {
                         // SEND RECEIVED MESSAGE TO ALL CLIENTS
-                        
                         memset(message, 0, BUF_SIZE);
-
-                        sprintf(message, "%s", names[i]);
-                        sprintf(&message[NAME_SIZE + 1], "%s", &buf[CMDCODE_SIZE + 1]);
-                        
-                        for (j = 0; j < clnt_cnt; j++)
-                        {
-                            // DISCARD DISCONNECTED OR NAMELESS CLIENTS
-                            if (client[j] < 0 || names[j][0] == 0) continue;
-
-                            write(client[j], message, BUF_SIZE);
-                            printf("Sent to client [%d] (%s)\n", client[j], names[j]);
-                        }
+                        sendAll(clnt_cnt, 3000, names[i], &buf[CMDCODE_SIZE + NAME_SIZE + 2], NULL);
                     }
 
                     else

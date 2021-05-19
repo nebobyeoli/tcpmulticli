@@ -22,6 +22,9 @@
 #define MIN_ERASE_LINES     2
 #define PP_LINE_SPACE       2       // min: 1 // prompt print ('Input message~') line space
 
+int sock;
+char nname[NAME_SIZE];
+
 void error_handling(char *message)
 {
     printf("%s", message);
@@ -31,6 +34,42 @@ void error_handling(char *message)
 void itoa(int i, char *st) {
     sprintf(st, "%d", i);
     return;
+}
+
+// MESSAGE SENDER
+void send_msg(int cmdcode, char *msg)
+{
+    char message[BUF_SIZE];
+    memset(message, 0, BUF_SIZE);
+
+    sprintf(message, "%d", cmdcode);
+    sprintf(&message[CMDCODE_SIZE + 1], "%s", nname);
+    sprintf(&message[CMDCODE_SIZE + NAME_SIZE + 2], "%s", msg);
+
+    write(sock, message, BUF_SIZE);
+}
+
+// MESSAGE RECEIVER: ALSO SETS PARAMETER VALUES TO 0
+// RETURNS read() RESULT
+int recv_msg(int *cmdcode, char *sender, char *message)
+{
+    char buf[BUF_SIZE];
+    int rresult;
+
+    memset(sender, 0, NAME_SIZE);
+    memset(buf, 0, BUF_SIZE);
+    memset(message, 0, BUF_SIZE);
+
+    if ((rresult = read(sock, buf, BUF_SIZE)) < 0) return rresult;
+
+    // RETRIEVE CMDCODE
+    *cmdcode = atoi(buf);
+    // RETRIEVE NAME OF SENDER
+    sprintf(sender, "%s", &buf[CMDCODE_SIZE + 1]);
+    // RETRIEVE MESSAGE
+    sprintf(message, "%s", &buf[CMDCODE_SIZE + NAME_SIZE + 2]);
+
+    return rresult;
 }
 
 // NOTE. this is for LINUX
@@ -66,11 +105,13 @@ int main(int argc, char *argv[])
 
     // fd = fileno(stdin);
 
-    int sock;
     int namelen;
     struct sockaddr_in serv_addr;
 
     int prompt_printed = 0;
+
+    int cmdcode;
+    char sender[NAME_SIZE];
 
     if (argc != 3) {
         printf("Usage : %s <IP> <port>\n", argv[0]);
@@ -89,6 +130,7 @@ int main(int argc, char *argv[])
     tr.tv_sec  = RECV_TIMEOUT_SEC;
     tr.tv_usec = RECV_TIMEOUT_USEC;
 
+    // SET TIMEOUT OF read()
     // https://stackoverflow.com/a/2939145
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tr, sizeof(tr));
     
@@ -98,11 +140,11 @@ int main(int argc, char *argv[])
     printf("CONNECTED TO SERVER.\n\n");
 
     int warned = 0;
+
+    // NICKNAME INITIALIZATION LOOP
     while (1)
     {
-        // SET NAME
         printf("NICKNAME: ");
-        fflush(0);
 
         fgets(buf, BUF_SIZE, stdin);
         for (namelen = 0; buf[namelen] != '\n'; namelen++);
@@ -123,13 +165,13 @@ int main(int argc, char *argv[])
         }
 
         else {
-            sprintf(message, "1000");
+            sprintf(message, "2000");
             sprintf(&message[CMDCODE_SIZE + 1], "%s", buf);
             
             write(sock, message, CMDCODE_SIZE + 1 + namelen);
 
             memset(message, 0, BUF_SIZE);
-            read(sock, message, BUF_SIZE);
+            read(sock, message, 2);
 
             if (atoi(message) == 0) {
                 moveCursorUp(warned ? 2 : 1, 0);
@@ -139,27 +181,21 @@ int main(int argc, char *argv[])
             
             else {
                 printf("Name accepted.\n");
+                memcpy(nname, buf, NAME_SIZE);
                 break;
             }
         }
     }
     
-    for (int i = 0; i < PP_LINE_SPACE; i++) printf("\n");
+    for (int i = 1; i < PP_LINE_SPACE; i++) printf("\n");
+
+    int is_init = 1;
 
     // MESSAGE COMMUNICATION LOOP
     while (1)
     {
-        FD_ZERO(&readfds);
-        FD_SET(sock, &readfds);
-
-        ts.tv_sec  = SEND_TIMEOUT_SEC;
-        ts.tv_usec = SEND_TIMEOUT_USEC;
-
-        memset(buf, 0, BUF_SIZE);
-        memset(message, 0, BUF_SIZE);
-
         // RECEIVE MESSAGE
-        if (read(sock, message, BUF_SIZE) < 0) {
+        if (recv_msg(&cmdcode, sender, message) < 0) {
             // printf("\nNo message.\n");
         }
         else {
@@ -167,25 +203,34 @@ int main(int argc, char *argv[])
             // fgets(buf, BUF_SIZE, stdin);
             // printf("%s\n", buf);
             // write(STDIN_FILENO, stdin, sizeof(stdin));
-            
-            // Print msg after removing previous lines.
-            moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
-            printf("\n%s sent: %s\n", message, &message[NAME_SIZE + 1]);
-            prompt_printed = 0;
-            fflush(0);
+
+            if (cmdcode == 1000 || cmdcode == 3000) {
+                // PRINT MSG AFTER REMOVING PREVIOUS LINES
+                if (!is_init) moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
+                else is_init = 0;
+
+                if (cmdcode == 1000) printf("\n\n========== %s ==========\n\n\n", message);
+                else printf("\n%s sent: %s\n", sender, message);
+
+                prompt_printed = 0;
+            }
         }
+
+        // REPRINT PROMPT ONLY ON OUTPUT OCCURENCE
+        if (!prompt_printed) {
+            for (int i = 0; i < PP_LINE_SPACE; i++) printf("\n");
+            printf("Input message(q/Q to quit): \n");
+            prompt_printed = 1;
+        }
+
+        fflush(0);
 
         FD_ZERO(&readfds);
         FD_SET(0, &readfds);  // fd 0 = stdin
 
-        // NOT PRINTING PROMPT WHILE WAITING / TYPING
-        if (!prompt_printed) {
-            for (int i = 0; i < PP_LINE_SPACE; i++) printf("\n");
-            printf("Input message(q/Q to quit): \n");
-            // fflush(0);
-            prompt_printed = 1;
-        }
-
+        ts.tv_sec  = SEND_TIMEOUT_SEC;
+        ts.tv_usec = SEND_TIMEOUT_USEC;
+        
         // SEND MESSAGE
         if (select(1, &readfds, NULL, NULL, &ts) > 0)
         {
@@ -193,17 +238,15 @@ int main(int argc, char *argv[])
             fgets(buf, BUF_SIZE, stdin);
             if (!strcmp(buf, "q\n") || !strcmp(buf, "Q\n")) break;
 
-            sprintf(message, "2000");
-            sprintf(&message[CMDCODE_SIZE + 1], "%s", buf);
-
             // SEND
-            write(sock, message, sizeof(message));
+            send_msg(3000, buf);
 
-            // READ
-            read(sock, message, BUF_SIZE);
+            // READ (CREATE OUTPUT FROM SERVER MESSAGE)
+            recv_msg(&cmdcode, sender, message);
+            
             moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + 1, 0);
-            printf("\n%s sent: %s\n", message, &message[NAME_SIZE + 1]);
-            fflush(0);
+            printf("\n%s sent: %s\n", sender, message);
+
             prompt_printed = 0;
         }
         else

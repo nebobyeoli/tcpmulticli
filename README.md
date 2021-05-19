@@ -8,11 +8,19 @@ Server source   | Client source
 --------------- | -------------
 `mulfd.c`       | `mulcli.c`
 
-Cmd code          | 1000                | 2000
------------------ | ------------------- | ---------------------
-**Signification** | Set client nickname | Message communication
+Cmd code          | 1000                | 2000                | 3000
+----------------- | ------------------- | ------------------- | ---------------------
+**Signification** | Message from server | Set client nickname | Message communication
 
-<br><br>
+<br>
+
+## Nickname requisites
+
+- Must not start with a `SPACE` character
+- Must be shorter than `NAME_SIZE (30)` characters
+- All names must be unique
+
+<br>
 
 <details>
   <summary><b>Cursor manipulation (go <i>up</i>) in linux</b></summary><br>
