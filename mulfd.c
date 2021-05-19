@@ -16,6 +16,12 @@
 #define NAME_SIZE       30
 #define MAX_SOCKS       100
 
+#define GETSERVMSG_TIMEOUT_SEC  0
+#define GETSERVMSG_TIMEOUT_USEC 100000  // 1000000 usec = 1 sec
+
+#define MIN_ERASE_LINES     1
+#define PP_LINE_SPACE       3       // min: 1  // prompt print ('Input message~') line space
+
 int client[MAX_SOCKS];
 char names[MAX_SOCKS][NAME_SIZE];
 
@@ -43,7 +49,7 @@ void sendAll(int clnt_cnt, int cmdcode, char *sender, char *msg, char *servlog)
     
     if (servlog) printf("\nMESSAGE FROM SERVER: %s\n", servlog);
 
-    printf("Total msgsize: %d of %d maximum\n", CMDCODE_SIZE + NAME_SIZE + strlen(msg), BUF_SIZE);
+    printf("Total msgsize: %d of %d maximum\n", CMDCODE_SIZE + NAME_SIZE + (int)strlen(msg), BUF_SIZE);
 
     for (i = 0; i < clnt_cnt; i++)
     {
@@ -53,6 +59,29 @@ void sendAll(int clnt_cnt, int cmdcode, char *sender, char *msg, char *servlog)
         write(client[i], message, BUF_SIZE);
         printf("Sent to client [%d] (%s)\n", client[i], names[i]);
     }
+}
+
+// NOTE. this is for LINUX
+// https://stackoverflow.com/a/35190285
+/* 
+ * \33[2K   erases the entire line your cursor is currently on
+ *
+ * \033[A   moves your cursor up one line, but in the same column
+ *          i.e. not to the start of the line
+ * 
+ * \r       brings your cursor to the beginning of the line
+ *          (r is for carriage return, N.B. carriage returns
+ *           do not include a newline so cursor remains on the same line)
+ *          but does not erase anything
+ * 
+ * \b       erase 1 char b ack
+ */
+void moveCursorUp(int lines, int eraselast)
+{
+    if (eraselast) printf("\33[2K");
+    for (int i = 0; i < lines; i++) printf("\033[A\33[2K");
+    printf("\r");
+    fflush(0);
 }
 
 int main(int argc, char **argv)
@@ -65,12 +94,15 @@ int main(int argc, char **argv)
     int serv_sock, clnt_sock, state;
     struct sockaddr_in clnt_addr, serv_addr;
 
-    struct timeval tv;
-    fd_set readfds, otherfds, allfds;
+    struct timeval ti;  // timeval_(std)input
+    fd_set stdinfd;
+    fd_set readfds, allfds;
     
     char buf[BUF_SIZE], message[BUF_SIZE];
     char serv_name[NAME_SIZE] = "SERVER";
     int i, j, clnt_size, clnt_cnt, fd_max;
+
+    int prompt_printed = 0;
 
     state = 0;
 
@@ -81,7 +113,7 @@ int main(int argc, char **argv)
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
     serv_addr.sin_port = htons(atoi(argv[1]));
-
+    
     state = bind(serv_sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
     if (state == -1) error_handling("bind() error");
 
@@ -104,15 +136,79 @@ int main(int argc, char **argv)
 
     while (1)
     {
+        FD_ZERO(&stdinfd);
+        FD_SET(0, &stdinfd);  // fd 0 = stdin
+
+        ti.tv_sec  = GETSERVMSG_TIMEOUT_SEC;
+        ti.tv_usec = GETSERVMSG_TIMEOUT_USEC;
+        
+        // REPRINT PROMPT ONLY ON OUTPUT OCCURENCE
+        if (!prompt_printed) {
+            for (int i = 0; i < PP_LINE_SPACE; i++) printf("\n");
+            printf("Input message(q/Q to quit): \n");
+            prompt_printed = 1;
+        }
+
+        // GET SERVER MSG
+        // ON STDIN STREAM DATA EXISTENCE
+        if (select(1, &stdinfd, NULL, NULL, &ti) > 0)
+        {
+            // INPUT
+            memset(buf, 0, BUF_SIZE);
+            fgets(buf, BUF_SIZE, stdin);
+            buf[strlen(buf) - 1] = 0;
+            if (!strcmp(buf, "q") || !strcmp(buf, "Q")) break;
+
+            // CHECK FOR EMOJIS
+            char mdest[BUF_SIZE], umdest[BUF_SIZE] = "\nMESSAGE FROM SERVER:\n";
+            char *index = strstr(buf, ":myh:");
+            if (index)
+            {
+                // CAST TO INT FOR MEMORY LOCATION INDICATION
+                // GET THE SIZE VALUE INBETWEEN
+                int inbet = (int)index - (int)buf;
+                
+                memcpy(mdest, buf, inbet);
+                sprintf(&mdest[inbet], "\n%s\n%s", myh, &buf[inbet + sizeof(":myh:") - 1]);
+                strcat(umdest, mdest);
+            }
+
+            moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
+
+            // SEND
+            if (index)  sendAll(clnt_cnt, 1000, serv_name, umdest, mdest);
+            else        sendAll(clnt_cnt, 1000, serv_name, buf, buf);
+
+            // READ (CREATE OUTPUT FROM SERVER MESSAGE)
+            // recv_msg(&cmdcode, sender, message);
+            
+            // printf("\n%s sent: %s\n", sender, message);
+
+            prompt_printed = 0;
+        }
+        else
+        {
+            // TIMEOUT
+
+            // printf("Timeout.\n");
+            // puts("");
+        }
+
+        ti.tv_sec  = GETSERVMSG_TIMEOUT_SEC;
+        ti.tv_usec = GETSERVMSG_TIMEOUT_USEC;
+        
         allfds = readfds;
-        state = select(fd_max + 1, &allfds, 0, 0, NULL);
+        state = select(fd_max + 1, &allfds, 0, 0, &ti);
 
         // ACCEPT CLIENT TO SERVER SOCK
         if (FD_ISSET(serv_sock, &allfds))
         {
             clnt_size = sizeof(clnt_addr);
             clnt_sock = accept(serv_sock, (struct sockaddr*)&clnt_addr, &clnt_size);
+            
+            moveCursorUp(MIN_ERASE_LINES, 0);
             printf("Connection from (%s, %d)\n", inet_ntoa(clnt_addr.sin_addr), ntohs(clnt_addr.sin_port));
+            prompt_printed = 0;
 
             for (i = 0; i < MAX_SOCKS; i++)
             {
@@ -149,6 +245,7 @@ int main(int argc, char **argv)
                 // DISCONNECT CLIENT
                 if (read(client[i], buf, BUF_SIZE) <= 0)
                 {
+                    moveCursorUp(MIN_ERASE_LINES, 0);
                     printf("Disconnected client [%d] (%s)\n", client[i], names[i]);
                     printf("===================================\n");
                     fflush(0);
@@ -167,13 +264,17 @@ int main(int argc, char **argv)
 
                         memset(names[i], 0, NAME_SIZE);
                     }
+
+                    prompt_printed = 0;
                 }
 
                 else
                 {
                     int cmdcode = atoi(buf);
 
+                    moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
                     printf("\nReceived from [%d] (%s): %s %s\n", client[i], names[i], buf, &buf[CMDCODE_SIZE + NAME_SIZE + 2]);
+                    prompt_printed = 0;
 
                     // MODE: SET NAME
                     if (cmdcode == 2000)
@@ -205,14 +306,14 @@ int main(int argc, char **argv)
                     {
                         char msg[BUF_SIZE], mdest[BUF_SIZE];
                         strcpy(msg, &buf[CMDCODE_SIZE + NAME_SIZE + 2]);
-
+                        
                         // CHECK FOR EMOJIS
                         char *index = strstr(msg, ":myh:");
                         if (index)
                         {
-                            int betw = (int)index - (int)msg;
-                            memcpy(mdest, msg, betw);
-                            sprintf(&mdest[betw], "\n%s\n%s", myh, &msg[betw + sizeof(":myh:") - 1]);
+                            int inbet = (int)index - (int)msg;
+                            memcpy(mdest, msg, inbet);
+                            sprintf(&mdest[inbet], "\n%s\n%s", myh, &msg[inbet + sizeof(":myh:") - 1]);
                             printf("%s\n%s\n", msg, mdest);
                             fflush(stdout);
                         }

@@ -19,8 +19,8 @@
 #define SEND_TIMEOUT_SEC    0
 #define SEND_TIMEOUT_USEC   100000
 
-#define MIN_ERASE_LINES     2
-#define PP_LINE_SPACE       2       // min: 1 // prompt print ('Input message~') line space
+#define MIN_ERASE_LINES     1
+#define PP_LINE_SPACE       2       // min: 1  // prompt print ('Input message~') line space
 
 int sock;
 char nname[NAME_SIZE];
@@ -97,6 +97,11 @@ void moveCursorUp(int lines, int eraselast)
 
 int main(int argc, char *argv[])
 {
+    if (argc != 3) {
+        printf("Usage : %s <IP> <port>\n", argv[0]);
+        exit(1);
+    }
+    
     char buf[BUF_SIZE], message[BUF_SIZE];
 
     struct  timeval tr;     // timeval_receive
@@ -113,11 +118,6 @@ int main(int argc, char *argv[])
     int cmdcode;
     char sender[NAME_SIZE];
 
-    if (argc != 3) {
-        printf("Usage : %s <IP> <port>\n", argv[0]);
-        exit(1);
-    }
-    
     sock = socket(PF_INET, SOCK_STREAM, 0);   
     if (sock == -1)
         error_handling("socket() error!");
@@ -194,6 +194,8 @@ int main(int argc, char *argv[])
     // MESSAGE COMMUNICATION LOOP
     while (1)
     {
+        int cmdcode_prev = cmdcode;
+
         // RECEIVE MESSAGE
         if (recv_msg(&cmdcode, sender, message) < 0) {
             // printf("\nNo message.\n");
@@ -209,7 +211,10 @@ int main(int argc, char *argv[])
                 if (!is_init) moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
                 else is_init = 0;
 
-                if (cmdcode == 1000) printf("\n\n========== %s ==========\n\n\n", message);
+                if (cmdcode == 1000) {
+                    if (cmdcode_prev == 1000) moveCursorUp(1, 0);
+                    printf("%s============ %s ============\n\n\n", cmdcode_prev == 1000 ? "" : "\n\n", message);
+                }
                 else printf("\n%s sent: %s\n", sender, message);
 
                 prompt_printed = 0;
@@ -232,11 +237,13 @@ int main(int argc, char *argv[])
         ts.tv_usec = SEND_TIMEOUT_USEC;
         
         // SEND MESSAGE
+        // ON STDIN STREAM DATA EXISTENCE
         if (select(1, &readfds, NULL, NULL, &ts) > 0)
         {
             // INPUT
             fgets(buf, BUF_SIZE, stdin);
-            if (!strcmp(buf, "q\n") || !strcmp(buf, "Q\n")) break;
+            buf[strlen(buf) - 1] = 0;
+            if (!strcmp(buf, "q") || !strcmp(buf, "Q")) break;
 
             // SEND
             send_msg(3000, buf);
