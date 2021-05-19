@@ -11,13 +11,15 @@
 #include <sys/time.h>
 #include <sys/select.h>
 
-#define BUF_SIZE        1024
+#define BUF_SIZE        1024 * 2
 #define CMDCODE_SIZE    4
 #define NAME_SIZE       30
 #define MAX_SOCKS       100
 
 int client[MAX_SOCKS];
 char names[MAX_SOCKS][NAME_SIZE];
+
+char myh[] = "⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢠⣴⣾⣿⣶⣶⣆⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀\n⢀⢀⢀⣀⢀⣤⢀⢀⡀⢀⣿⣿⣿⣿⣷⣿⣿⡇⢀⢀⢀⢀⣤⣀⢀⢀⢀⢀⢀\n⢀⢀ ⣶⢻⣧⣿⣿⠇ ⢸⣿⣿⣿⣷⣿⣿⣿⣷⢀⢀⢀⣾⡟⣿⡷⢀⢀⢀⢀\n⢀⢀⠈⠳⣿⣾⣿⣿⢀⠈⢿⣿⣿⣷⣿⣿⣿⣿⢀⢀⢀⣿⣿⣿⠇⢀⢀⢀⢀\n⢀⢀⢀⢀⢿⣿⣿⣿⣤⡶⠺⣿⣿⣿⣷⣿⣿⣿⢄⣤⣼⣿⣿⡏⢀⢀⢀⢀⢀\n⢀⢀⢀⢀⣼⣿⣿⣿⠟⢀⢀⠹⣿⣿⣿⣷⣿⣿⣎⠙⢿⣿⣿⣷⣤⣀⡀⢀⢀\n⢀⢀⢀ ⢸⣿⣿⣿⡿⢀⢀⣤⣿⣿⣿⣷⣿⣿⣿⣄⠈⢿⣿⣿⣷⣿⣿⣷⡀⢀\n⢀⢀⢀⣿⣿⣿⣿⣷⣀⣀⣠⣿⣿⣿⣿⣷⣿⣷⣿⣿⣷⣾⣿⣿⣿⣷⣿⣿⣿⣆\n⣿⣿⠛⠋⠉⠉⢻⣿⣿⣿⣿⡇⡀⠘⣿⣿⣿⣷⣿⣿⣿⠛⠻⢿⣿⣿⣿⣿⣷⣦\n⣿⣿⣧⡀⠿⠇⣰⣿⡟⠉⠉⢻⡆⠈⠟⠛⣿⣿⣿⣯⡉⢁⣀⣈⣉⣽⣿⣿⣿⣷\n⡿⠛⠛⠒⠚⠛⠉⢻⡇⠘⠃⢸⡇⢀⣤⣾⠋⢉⠻⠏⢹⠁⢤⡀⢉⡟⠉⡙⠏⣹\n⣿⣦⣶⣶⢀⣿⣿⣿⣷⣿⣿⣿⡇⢀⣀⣹⣶⣿⣷⠾⠿⠶⡀⠰⠾⢷⣾⣷⣶⣿\n⣿⣿⣿⣿⣇⣿⣿⣿⣷⣿⣿⣿⣇⣰⣿⣿⣷⣿⣿⣷⣤⣴⣶⣶⣦⣼⣿⣿⣿⣷";
 
 void error_handling(char *message)
 {
@@ -28,6 +30,7 @@ void error_handling(char *message)
 // SEND TO ALL CLIENTS
 void sendAll(int clnt_cnt, int cmdcode, char *sender, char *msg, char *servlog)
 {
+    int i;
     char message[BUF_SIZE];
     memset(message, 0, BUF_SIZE);
     
@@ -40,7 +43,9 @@ void sendAll(int clnt_cnt, int cmdcode, char *sender, char *msg, char *servlog)
     
     if (servlog) printf("\nMESSAGE FROM SERVER: %s\n", servlog);
 
-    for (int i = 0; i < clnt_cnt; i++)
+    printf("Total msgsize: %d of %d maximum\n", CMDCODE_SIZE + NAME_SIZE + strlen(msg), BUF_SIZE);
+
+    for (i = 0; i < clnt_cnt; i++)
     {
         // DISCARD DISCONNECTED OR NAMELESS CLIENTS
         if (client[i] < 0 || names[i][0] == 0) continue;
@@ -128,7 +133,7 @@ int main(int argc, char **argv)
             memset(names[i], 0, NAME_SIZE);
 
             if (clnt_sock > fd_max) fd_max = clnt_sock;
-            if (i + 1 > clnt_cnt)       clnt_cnt = i + 1;
+            if (i + 1 > clnt_cnt)   clnt_cnt = i + 1;
             if (--state <= 0)       continue;
         }
 
@@ -168,7 +173,7 @@ int main(int argc, char **argv)
                 {
                     int cmdcode = atoi(buf);
 
-                    printf("\nReceived from [%d] (%s): %s %s\n", client[i], names[i], buf, &buf[CMDCODE_SIZE + 1]);
+                    printf("\nReceived from [%d] (%s): %s %s\n", client[i], names[i], buf, &buf[CMDCODE_SIZE + NAME_SIZE + 2]);
 
                     // MODE: SET NAME
                     if (cmdcode == 2000)
@@ -198,9 +203,23 @@ int main(int argc, char **argv)
                     // MODE: MESSAGE
                     else if (cmdcode == 3000)
                     {
+                        char msg[BUF_SIZE], mdest[BUF_SIZE];
+                        strcpy(msg, &buf[CMDCODE_SIZE + NAME_SIZE + 2]);
+
+                        // CHECK FOR EMOJIS
+                        char *index = strstr(msg, ":myh:");
+                        if (index)
+                        {
+                            int betw = (int)index - (int)msg;
+                            memcpy(mdest, msg, betw);
+                            sprintf(&mdest[betw], "\n%s\n%s", myh, &msg[betw + sizeof(":myh:") - 1]);
+                            printf("%s\n%s\n", msg, mdest);
+                            fflush(stdout);
+                        }
+
                         // SEND RECEIVED MESSAGE TO ALL CLIENTS
                         memset(message, 0, BUF_SIZE);
-                        sendAll(clnt_cnt, 3000, names[i], &buf[CMDCODE_SIZE + NAME_SIZE + 2], NULL);
+                        sendAll(clnt_cnt, 3000, names[i], index ? mdest : msg, NULL);
                     }
 
                     else
