@@ -198,10 +198,10 @@ int main(int argc, char *argv[])
 
         // RECEIVE MESSAGE
         if (recv_msg(&cmdcode, sender, message) < 0) {
-            // printf("\nNo message.\n");
+            // printf("No message.\n");
         }
         else {
-            // Attempts to retain what the user was typing after msg receival...
+            // Some attempts to retain what the user was typing after msg receival...
             // fgets(buf, BUF_SIZE, stdin);
             // printf("%s\n", buf);
             // write(STDIN_FILENO, stdin, sizeof(stdin));
@@ -259,9 +259,7 @@ int main(int argc, char *argv[])
         else
         {
             // TIMEOUT
-
             // printf("Timeout.\n");
-            // puts("");
         }
 
         fflush(0);

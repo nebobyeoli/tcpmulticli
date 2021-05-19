@@ -179,19 +179,12 @@ int main(int argc, char **argv)
             if (index)  sendAll(clnt_cnt, 1000, serv_name, umdest, mdest);
             else        sendAll(clnt_cnt, 1000, serv_name, buf, buf);
 
-            // READ (CREATE OUTPUT FROM SERVER MESSAGE)
-            // recv_msg(&cmdcode, sender, message);
-            
-            // printf("\n%s sent: %s\n", sender, message);
-
             prompt_printed = 0;
         }
         else
         {
             // TIMEOUT
-
             // printf("Timeout.\n");
-            // puts("");
         }
 
         ti.tv_sec  = GETSERVMSG_TIMEOUT_SEC;
