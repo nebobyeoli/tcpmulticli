@@ -17,7 +17,7 @@
 #define MAX_SOCKS       100
 
 #define GETSERVMSG_TIMEOUT_SEC  0
-#define GETSERVMSG_TIMEOUT_USEC 100000  // 1000000 usec = 1 sec
+#define GETSERVMSG_TIMEOUT_USEC 50000  // 1000000 usec = 1 sec
 
 #define MIN_ERASE_LINES     1
 #define PP_LINE_SPACE       3       // min: 1  // prompt print ('Input message~') line space
@@ -131,7 +131,7 @@ int main(int argc, char **argv)
     FD_ZERO(&readfds);
     FD_SET(serv_sock, &readfds);
 
-    printf("\nStarted TCP Server.\n\n\n");
+    printf("\nStarted TCP Server.\n");
     fflush(stdout);
 
     while (1)

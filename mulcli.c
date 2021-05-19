@@ -15,7 +15,7 @@
 #define NAME_SIZE       30
 
 #define RECV_TIMEOUT_SEC    0
-#define RECV_TIMEOUT_USEC   100000  // 1000000 usec = 1 sec
+#define RECV_TIMEOUT_USEC   50000  // 1000000 usec = 1 sec
 #define SEND_TIMEOUT_SEC    0
 #define SEND_TIMEOUT_USEC   100000
 
