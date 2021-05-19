@@ -29,8 +29,8 @@ void error_handling(char *message)
 }
 
 void itoa(int i, char *st) {
-	sprintf(st, "%d", i);
-	return;
+    sprintf(st, "%d", i);
+    return;
 }
 
 // NOTE. this is for LINUX
@@ -58,7 +58,7 @@ void moveCursorUp(int lines, int eraselast)
 
 int main(int argc, char *argv[])
 {
-	char buf[BUF_SIZE], message[BUF_SIZE];
+    char buf[BUF_SIZE], message[BUF_SIZE];
 
     struct  timeval tr;     // timeval_receive
     struct  timeval ts;     // timeval_send
@@ -66,33 +66,33 @@ int main(int argc, char *argv[])
 
     // fd = fileno(stdin);
 
-	int sock;
-	int namelen;
-	struct sockaddr_in serv_addr;
+    int sock;
+    int namelen;
+    struct sockaddr_in serv_addr;
 
     int prompt_printed = 0;
 
-	if (argc != 3) {
-		printf("Usage : %s <IP> <port>\n", argv[0]);
-		exit(1);
-	}
-	
-	sock = socket(PF_INET, SOCK_STREAM, 0);   
-	if (sock == -1)
+    if (argc != 3) {
+        printf("Usage : %s <IP> <port>\n", argv[0]);
+        exit(1);
+    }
+    
+    sock = socket(PF_INET, SOCK_STREAM, 0);   
+    if (sock == -1)
         error_handling("socket() error!");
-	
-	memset(&serv_addr, 0, sizeof(serv_addr));
-	serv_addr.sin_family = AF_INET;
-	serv_addr.sin_addr.s_addr = inet_addr(argv[1]);
-	serv_addr.sin_port = htons(atoi(argv[2]));
+    
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = inet_addr(argv[1]);
+    serv_addr.sin_port = htons(atoi(argv[2]));
 
     tr.tv_sec  = RECV_TIMEOUT_SEC;
     tr.tv_usec = RECV_TIMEOUT_USEC;
 
     // https://stackoverflow.com/a/2939145
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tr, sizeof(tr));
-	
-	if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) == -1)
+    
+    if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) == -1)
         error_handling("connect() error!");
     
     printf("CONNECTED TO SERVER.\n\n");
@@ -149,8 +149,8 @@ int main(int argc, char *argv[])
     for (int i = 0; i < PP_LINE_SPACE; i++) printf("\n");
 
 
-	while (1)
-	{
+    while (1)
+    {
         FD_ZERO(&readfds);
         FD_SET(sock, &readfds);
 
@@ -215,7 +215,7 @@ int main(int argc, char *argv[])
 
         fflush(0);
     }
-	
-	close(sock);
-	return 0;
+    
+    close(sock);
+    return 0;
 }
