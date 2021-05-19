@@ -8,7 +8,11 @@ Server source   | Client source
 --------------- | -------------
 `mulfd.c`       | `mulcli.c`
 
-<br>
+Cmd code          | 1000                | 2000
+----------------- | ------------------- | ---------------------
+**Signification** | Set client nickname | Message communication
+
+<br><br>
 
 <details>
   <summary><b>Cursor manipulation (go <i>up</i>) in linux</b></summary><br>

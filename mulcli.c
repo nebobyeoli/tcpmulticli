@@ -144,11 +144,9 @@ int main(int argc, char *argv[])
         }
     }
     
-    
-
     for (int i = 0; i < PP_LINE_SPACE; i++) printf("\n");
 
-
+    // MESSAGE COMMUNICATION LOOP
     while (1)
     {
         FD_ZERO(&readfds);
@@ -160,18 +158,21 @@ int main(int argc, char *argv[])
         memset(buf, 0, BUF_SIZE);
         memset(message, 0, BUF_SIZE);
 
+        // RECEIVE MESSAGE
         if (read(sock, message, BUF_SIZE) < 0) {
             // printf("\nNo message.\n");
         }
         else {
+            // Attempts to retain what the user was typing after msg receival...
             // fgets(buf, BUF_SIZE, stdin);
             // printf("%s\n", buf);
+            // write(STDIN_FILENO, stdin, sizeof(stdin));
             
+            // Print msg after removing previous lines.
             moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
             printf("\n%s sent: %s\n", message, &message[NAME_SIZE + 1]);
             prompt_printed = 0;
             fflush(0);
-            // write(STDIN_FILENO, stdin, sizeof(stdin));
         }
 
         FD_ZERO(&readfds);
@@ -185,7 +186,7 @@ int main(int argc, char *argv[])
             prompt_printed = 1;
         }
 
-        // 2sec
+        // SEND MESSAGE
         if (select(1, &readfds, NULL, NULL, &ts) > 0)
         {
             // INPUT
