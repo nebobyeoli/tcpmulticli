@@ -159,6 +159,10 @@ int main(int argc, char **argv)
             buf[strlen(buf) - 1] = 0;
             if (!strcmp(buf, "q") || !strcmp(buf, "Q")) break;
 
+            // IMPLEMENT VIEW CLIENT LIST HERE
+            // if (GETCH(ESC))
+            // <...>
+
             // CHECK FOR EMOJIS
             char mdest[BUF_SIZE], umdest[BUF_SIZE] = "\nMESSAGE FROM SERVER:\n";
             char *index = strstr(buf, ":myh:");
