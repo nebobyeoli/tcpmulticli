@@ -1,20 +1,69 @@
 # TCP multiple clients
 
-`18WP 2021`
+#### `18WP 2021`
 
-<br>
+## Sources
 
 Server source   | Client source
 --------------- | -------------
-`mulfd.c`       | `mulcli.c`
+[`mulfd.c (main branch)`](https://github.com/nebobyeoli/tcpmulticli/blob/main/mulfd.c) | [`mulcli.c (main branch)`](https://github.com/nebobyeoli/tcpmulticli/blob/main/mulcli.c)
 
-Cmd code          | 1000                | 2000                | 3000
------------------ | ------------------- | ------------------- | ---------------------
-**Signification** | Message from server | Set client nickname | Message communication
+## Branches
 
-##
+Branch name | Pull request | Description
+----------- | ------------ | -----------
+**clistat** | [Manage Client Status](https://github.com/nebobyeoli/tcpmulticli/pull/2) | Server/Client 필요 기능 조건
+**emojis**  | [Emoji support](https://github.com/nebobyeoli/tcpmulticli/pull/1)        | 텍스트 이미지 이모티콘 및 긴 `mms` 송수신에 관하여
 
-**`would-be helpful notes to self`**
+## Cmd code significations
+
+Cmd code | Meaning
+-------- | ---------------------
+**1000** | Message from server
+**2000** | Set client nickname
+**3000** | Message communication
+
+## Message format
+
+Order | Name          | Size variable  | Size
+----- | ------------- | -------------- | ----------
+1     | **`cmdcode`** | `CMDCODE_SIZE` | `4`
+2     | **`sender`**  | `NAME_SIZE`    | `30`
+3     | **`msg`**     | `BUF_SIZE`     | `1024 * n`
+
+Message is concatenated via `sprintf()`.
+
+Example:
+```c
+// CREATE MESSAGE FOR write()
+// + 1 AND + 2 BELOW INDICATES [NULL] CHARACTERS
+// TO DISTINGUISH FORMAT PARAMETERS ON read()
+
+// APPEND CMDCODE
+sprintf(message, "%d", cmdcode);
+// APPEND NAME OF SENDER
+sprintf(&message[CMDCODE_SIZE + 1], "%s", sender);
+// APPEND MESSAGE
+sprintf(&message[CMDCODE_SIZE + NAME_SIZE + 2], "%s", msg);
+```
+
+## Nickname requisites
+
+- Must not start with a `SPACE` character
+- Must be shorter than `NAME_SIZE (30)` characters
+- All names must be unique
+
+## Emoji support
+
+`temporarily? doubled the BUF_SIZE because of it`
+
+Command   | Description | Appearance
+--------- | ----------- | ----------
+**:myh:** | 무 야 호 | ⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢠⣴⣾⣿⣶⣶⣆⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀<br>⢀⢀⢀⣀⢀⣤⢀⢀⡀⢀⣿⣿⣿⣿⣷⣿⣿⡇⢀⢀⢀⢀⣤⣀⢀⢀⢀⢀⢀<br>⢀⢀ ⣶⢻⣧⣿⣿⠇ ⢸⣿⣿⣿⣷⣿⣿⣿⣷⢀⢀⢀⣾⡟⣿⡷⢀⢀⢀⢀<br>⢀⢀⠈⠳⣿⣾⣿⣿⢀⠈⢿⣿⣿⣷⣿⣿⣿⣿⢀⢀⢀⣿⣿⣿⠇⢀⢀⢀⢀<br>⢀⢀⢀⢀⢿⣿⣿⣿⣤⡶⠺⣿⣿⣿⣷⣿⣿⣿⢄⣤⣼⣿⣿⡏⢀⢀⢀⢀⢀<br>⢀⢀⢀⢀⣼⣿⣿⣿⠟⢀⢀⠹⣿⣿⣿⣷⣿⣿⣎⠙⢿⣿⣿⣷⣤⣀⡀⢀⢀<br>⢀⢀⢀ ⢸⣿⣿⣿⡿⢀⢀⣤⣿⣿⣿⣷⣿⣿⣿⣄⠈⢿⣿⣿⣷⣿⣿⣷⡀⢀<br>⢀⢀⢀⣿⣿⣿⣿⣷⣀⣀⣠⣿⣿⣿⣿⣷⣿⣷⣿⣿⣷⣾⣿⣿⣿⣷⣿⣿⣿⣆<br>⣿⣿⠛⠋⠉⠉⢻⣿⣿⣿⣿⡇⡀⠘⣿⣿⣿⣷⣿⣿⣿⠛⠻⢿⣿⣿⣿⣿⣷⣦<br>⣿⣿⣧⡀⠿⠇⣰⣿⡟⠉⠉⢻⡆⠈⠟⠛⣿⣿⣿⣯⡉⢁⣀⣈⣉⣽⣿⣿⣿⣷<br>⡿⠛⠛⠒⠚⠛⠉⢻⡇⠘⠃⢸⡇⢀⣤⣾⠋⢉⠻⠏⢹⠁⢤⡀⢉⡟⠉⡙⠏⣹<br>⣿⣦⣶⣶⢀⣿⣿⣿⣷⣿⣿⣿⡇⢀⣀⣹⣶⣿⣷⠾⠿⠶⡀⠰⠾⢷⣾⣷⣶⣿<br>⣿⣿⣿⣿⣇⣿⣿⣿⣷⣿⣿⣿⣇⣰⣿⣿⣷⣿⣿⣷⣤⣴⣶⣶⣦⣼⣿⣿⣿⣷ |
+
+## Notes to self.
+
+### 소스 중 특정 일부 참고용
 
 <details>
   <summary><b>Cursor manipulation (go <i>up</i>) in linux</b></summary><br>
@@ -104,21 +153,3 @@ Cmd code          | 1000                | 2000                | 3000
 
   ```
 </details>
-
-<br>
-
-## Nickname requisites
-
-- Must not start with a `SPACE` character
-- Must be shorter than `NAME_SIZE (30)` characters
-- All names must be unique
-
-<br>
-
-## "Emojis"
-
-`temporarily? doubled the BUF_SIZE because of it`
-
-Command | `:myh:` |
-------- | ------- |
-**Appearance** | ⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢠⣴⣾⣿⣶⣶⣆⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀<br>⢀⢀⢀⣀⢀⣤⢀⢀⡀⢀⣿⣿⣿⣿⣷⣿⣿⡇⢀⢀⢀⢀⣤⣀⢀⢀⢀⢀⢀<br>⢀⢀ ⣶⢻⣧⣿⣿⠇ ⢸⣿⣿⣿⣷⣿⣿⣿⣷⢀⢀⢀⣾⡟⣿⡷⢀⢀⢀⢀<br>⢀⢀⠈⠳⣿⣾⣿⣿⢀⠈⢿⣿⣿⣷⣿⣿⣿⣿⢀⢀⢀⣿⣿⣿⠇⢀⢀⢀⢀<br>⢀⢀⢀⢀⢿⣿⣿⣿⣤⡶⠺⣿⣿⣿⣷⣿⣿⣿⢄⣤⣼⣿⣿⡏⢀⢀⢀⢀⢀<br>⢀⢀⢀⢀⣼⣿⣿⣿⠟⢀⢀⠹⣿⣿⣿⣷⣿⣿⣎⠙⢿⣿⣿⣷⣤⣀⡀⢀⢀<br>⢀⢀⢀ ⢸⣿⣿⣿⡿⢀⢀⣤⣿⣿⣿⣷⣿⣿⣿⣄⠈⢿⣿⣿⣷⣿⣿⣷⡀⢀<br>⢀⢀⢀⣿⣿⣿⣿⣷⣀⣀⣠⣿⣿⣿⣿⣷⣿⣷⣿⣿⣷⣾⣿⣿⣿⣷⣿⣿⣿⣆<br>⣿⣿⠛⠋⠉⠉⢻⣿⣿⣿⣿⡇⡀⠘⣿⣿⣿⣷⣿⣿⣿⠛⠻⢿⣿⣿⣿⣿⣷⣦<br>⣿⣿⣧⡀⠿⠇⣰⣿⡟⠉⠉⢻⡆⠈⠟⠛⣿⣿⣿⣯⡉⢁⣀⣈⣉⣽⣿⣿⣿⣷<br>⡿⠛⠛⠒⠚⠛⠉⢻⡇⠘⠃⢸⡇⢀⣤⣾⠋⢉⠻⠏⢹⠁⢤⡀⢉⡟⠉⡙⠏⣹<br>⣿⣦⣶⣶⢀⣿⣿⣿⣷⣿⣿⣿⡇⢀⣀⣹⣶⣿⣷⠾⠿⠶⡀⠰⠾⢷⣾⣷⣶⣿<br>⣿⣿⣿⣿⣇⣿⣿⣿⣷⣿⣿⣿⣇⣰⣿⣿⣷⣿⣿⣷⣤⣴⣶⣶⣦⣼⣿⣿⣿⣷ |
