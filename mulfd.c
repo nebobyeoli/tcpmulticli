@@ -105,33 +105,38 @@ void check_append_emojis(char *msg, char *mdest)
     // GET THE SIZE VALUE INBETWEEN
     int inbet;
 
-    int len;
+    // int len;
     
     index = strstr(message, ":myh:");
     if (index)
     {
         inbet = (int)index - (int)message;
-        len = (int)strlen(mdest);
+        // len = (int)strlen(mdest);
         
-        memcpy(&mdest[len], message, inbet);
-        sprintf(&mdest[len + inbet], "\n%s\n", myh);
-        // /* was previously */ sprintf(&mdest[0 + inbet], "\n%s\n%s", myh, &message[inbet + sizeof(":myh:") - 1]);
+        memcpy(mdest, message, inbet);
+        // /* way 1 */ sprintf(&mdest[len + inbet], "\n%s\n", myh);
+        sprintf(&mdest[inbet], "\n%s\n%s", myh, &message[inbet + sizeof(":myh:") - 1]);
     }
 
     printf("%s\n", message);
-    memcpy(message, &message[inbet + sizeof(":myh:") - 1], BUF_SIZE - (inbet + sizeof(":myh:")));
-    printf("%s\n", message);
+    printf("%s\n", mdest);
 
-    index = strstr(message, ":bigbird:");
+    // 
+    // message and mdest role swap time!
+    // 
+
+    index = strstr(mdest, ":bigbird:");
     
     if (index)
     {
-        inbet = (int)index - (int)message;
-        len = (int)strlen(mdest);
+        inbet = (int)index - (int)mdest;
+        // len = (int)strlen(message);
 
-        memcpy(&mdest[len], message, inbet);
-        sprintf(&mdest[len + inbet], "\n%s\n%s", bigbird, &message[inbet + sizeof(":bigbird:") - 1]);
+        memcpy(message, mdest, inbet);
+        sprintf(&message[inbet], "\n%s\n%s", bigbird, &mdest[inbet + sizeof(":bigbird:") - 1]);
     }
+
+    memcpy(mdest, message, BUF_SIZE);
 }
 
 int main(int argc, char **argv)
