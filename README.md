@@ -36,8 +36,8 @@ Message is concatenated via `sprintf()`.
 Example:
 ```c
 // CREATE MESSAGE FOR write()
-// + 1 AND + 2 BELOW INDICATES [NULL] CHARACTERS
-// TO DISTINGUISH FORMAT PARAMETERS ON read()
+// + 1 AND + 2 BELOW INDICATES LEAVING OUT [NULL] CHARACTERS
+// AS SEPARATORS TO DISTINGUISH FORMAT PARAMETERS ON read()
 
 // APPEND CMDCODE
 sprintf(message, "%d", cmdcode);
