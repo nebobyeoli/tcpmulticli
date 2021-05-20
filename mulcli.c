@@ -10,7 +10,7 @@
 #include <sys/select.h>
 #include <sys/time.h>
 
-#define BUF_SIZE        1024 * 2
+#define BUF_SIZE        1024 * 4
 #define CMDCODE_SIZE    4
 #define NAME_SIZE       30
 

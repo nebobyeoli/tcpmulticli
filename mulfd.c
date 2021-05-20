@@ -86,6 +86,57 @@ void moveCursorUp(int lines, int eraselast)
     fflush(0);
 }
 
+// EMBEDS EMOJIS TO MSG, REPLACING :[emojicommand]:
+// CURRENTLY: CAN ONLY USE ONE EMOJI PER EMOJI TYPE
+void check_append_emojis(char *msg, char *mdest)
+{
+    // EMOJI EMBEDDER
+    // CURRENTLY SUPPORTS: EMBEDDED :myh: AND :bigbird:
+
+    char message[BUF_SIZE];
+    memcpy(message, msg, BUF_SIZE);
+    memset(mdest, 0, BUF_SIZE);
+
+    // TYPE *CHAR BECAUSE OF MSG TYPE,
+    // BUT USED INT-CASTED FOR GETTING SIZE USING MEMORY LOCATION COMPARISONS
+    char *index;
+
+    // CAST TO INT FOR MEMORY LOCATION INDICATION
+    // GET THE SIZE VALUE INBETWEEN
+    int inbet;
+    
+    index = strstr(message, ":myh:");
+    if (index)
+    {
+        inbet = (int)index - (int)message;
+        
+        memcpy(&mdest[0], message, inbet);
+        sprintf(&mdest[0 + inbet], "\n%s\n%s", myh, &message[inbet + sizeof(":myh:") - 1]);
+    }
+
+    printf("%s\n", message);
+    // memset(message, 0, BUF_SIZE);
+    memcpy(message, &message[inbet + sizeof(":myh:") - 1], BUF_SIZE - (inbet + sizeof(":myh:")));
+    printf("%s\n", message);
+    // printf("||%s\n", message);
+    // printf("||%s\n", mdest);
+
+    index = strstr(message, ":bigbird:");
+    
+    // printf("^^%.*s\n", sizeof(index), index);
+    // printf("index:||%s\n", index);
+
+
+    if (index)
+    {
+        inbet = (int)index - (int)message;
+        int len  = (int)strlen(mdest);
+
+        memcpy(&mdest[len], message, inbet);
+        sprintf(&mdest[len + inbet], "\n%s\n%s", bigbird, &message[inbet + sizeof(":bigbird:") - 1]);
+    }
+}
+
 int main(int argc, char **argv)
 {
     if (argc != 2) {
@@ -162,40 +213,18 @@ int main(int argc, char **argv)
             if (!strcmp(buf, "q") || !strcmp(buf, "Q")) break;
 
             // if ()
+            moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
 
             // CHECK FOR EMOJIS
             char mdest[BUF_SIZE], umdest[BUF_SIZE] = "\nMESSAGE FROM SERVER:\n";
-            char *index = strstr(buf, ":myh:");
-            if (index)
-            {
-                // CAST TO INT FOR MEMORY LOCATION INDICATION
-                // GET THE SIZE VALUE INBETWEEN
-                int inbet = (int)index - (int)buf;
-                
-                memcpy(mdest, buf, inbet);
-                sprintf(&mdest[inbet], "\n%s\n%s", myh, &buf[inbet + sizeof(":myh:") - 1]);
-                strcat(umdest, mdest);
-            }
+            check_append_emojis(buf, mdest);
+            strcat(umdest, mdest);
 
-
-            *index = strstr(buf, ":bigbird:");
-            if (index)
-            {
-                // CAST TO INT FOR MEMORY LOCATION INDICATION
-                // GET THE SIZE VALUE INBETWEEN
-                int inbet = (int)index - (int)buf;
-                int len = (int)strlen(mdest);
-
-                memcpy(&mdest[len - 1], buf, inbet);
-                sprintf(&mdest[len - 1 + inbet], "\n%s\n%s", bigbird, &buf[inbet + sizeof(":bigbird:") - 1]);
-                strcat(umdest, mdest);
-            }
-
-            moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
+            // moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
 
             // SEND
-            if (index)  sendAll(clnt_cnt, 1000, serv_name, umdest, mdest);
-            else        sendAll(clnt_cnt, 1000, serv_name, buf, buf);
+            if (mdest[0])   sendAll(clnt_cnt, 1000, serv_name, umdest, mdest);
+            else            sendAll(clnt_cnt, 1000, serv_name, buf, buf);
 
             prompt_printed = 0;
         }
@@ -315,23 +344,21 @@ int main(int argc, char **argv)
                     // MODE: MESSAGE
                     else if (cmdcode == 3000)
                     {
-                        char msg[BUF_SIZE], mdest[BUF_SIZE];
+                        // NEW BUFFER FOR USAGE AS PARAMETER FOR sendAll()
+                        char msg[BUF_SIZE];
+                        // EXTRACT MESSAGE FROM RECV BUFFER
                         strcpy(msg, &buf[CMDCODE_SIZE + NAME_SIZE + 2]);
                         
                         // CHECK FOR EMOJIS
-                        char *index = strstr(msg, ":myh:");
-                        if (index)
-                        {
-                            int inbet = (int)index - (int)msg;
-                            memcpy(mdest, msg, inbet);
-                            sprintf(&mdest[inbet], "\n%s\n%s", myh, &msg[inbet + sizeof(":myh:") - 1]);
-                            printf("%s\n%s\n", msg, mdest);
-                            fflush(stdout);
-                        }
+                        char mdest[BUF_SIZE], umdest[BUF_SIZE] = "\nMESSAGE FROM SERVER:\n";
+                        check_append_emojis(msg, mdest);
+                        strcat(umdest, mdest);
 
-                        // SEND RECEIVED MESSAGE TO ALL CLIENTS
-                        memset(message, 0, BUF_SIZE);
-                        sendAll(clnt_cnt, 3000, names[i], index ? mdest : msg, NULL);
+                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
+
+                        // SEND
+                        if (mdest[0]) sendAll(clnt_cnt, 3000, names[i], mdest, mdest);
+                        else          sendAll(clnt_cnt, 3000, names[i], msg, msg);
                     }
 
                     else
