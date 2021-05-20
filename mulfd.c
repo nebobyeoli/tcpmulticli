@@ -104,33 +104,30 @@ void check_append_emojis(char *msg, char *mdest)
     // CAST TO INT FOR MEMORY LOCATION INDICATION
     // GET THE SIZE VALUE INBETWEEN
     int inbet;
+
+    int len;
     
     index = strstr(message, ":myh:");
     if (index)
     {
         inbet = (int)index - (int)message;
+        len = (int)strlen(mdest);
         
-        memcpy(&mdest[0], message, inbet);
-        sprintf(&mdest[0 + inbet], "\n%s\n%s", myh, &message[inbet + sizeof(":myh:") - 1]);
+        memcpy(&mdest[len], message, inbet);
+        sprintf(&mdest[len + inbet], "\n%s\n", myh);
+        // /* was previously */ sprintf(&mdest[0 + inbet], "\n%s\n%s", myh, &message[inbet + sizeof(":myh:") - 1]);
     }
 
     printf("%s\n", message);
-    // memset(message, 0, BUF_SIZE);
     memcpy(message, &message[inbet + sizeof(":myh:") - 1], BUF_SIZE - (inbet + sizeof(":myh:")));
     printf("%s\n", message);
-    // printf("||%s\n", message);
-    // printf("||%s\n", mdest);
 
     index = strstr(message, ":bigbird:");
     
-    // printf("^^%.*s\n", sizeof(index), index);
-    // printf("index:||%s\n", index);
-
-
     if (index)
     {
         inbet = (int)index - (int)message;
-        int len  = (int)strlen(mdest);
+        len = (int)strlen(mdest);
 
         memcpy(&mdest[len], message, inbet);
         sprintf(&mdest[len + inbet], "\n%s\n%s", bigbird, &message[inbet + sizeof(":bigbird:") - 1]);
