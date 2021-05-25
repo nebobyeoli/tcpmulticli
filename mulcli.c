@@ -19,8 +19,10 @@
 #define SEND_TIMEOUT_SEC    0
 #define SEND_TIMEOUT_USEC   100000
 
-#define MIN_ERASE_LINES     1
-#define PP_LINE_SPACE       2       // min: 1  // prompt print ('Input message~') line space
+#define MIN_ERASE_LINES     1   // 각 출력 사이의 줄 간격 - 앞서 출력된 '입력 문구'를 포함하여, 다음 메시지 출력 전에 지울 줄 수
+#define PP_LINE_SPACE       2   // 최솟값: 1  // 출력되는 메시지들과 '입력 문구' 사이 줄 간격
+
+char mulcast_addr[] = "239.0.100.1";
 
 int sock;
 char nname[NAME_SIZE];
@@ -51,6 +53,10 @@ void send_msg(int cmdcode, char *msg)
 
 // MESSAGE RECEIVER: ALSO SETS PARAMETER VALUES TO 0
 // RETURNS read() RESULT
+/* 
+ * int *cmdcode: cmdcode값을 직접 수정해 주기 때문에 포인터로 받는다.
+ * 각 크기 변수를 배열 인덱스로 활용해, 메시지 데이터들을 인자로 주어진 각 변수에 저장한다.
+ */
 int recv_msg(int *cmdcode, char *sender, char *message)
 {
     char buf[BUF_SIZE];
@@ -75,24 +81,35 @@ int recv_msg(int *cmdcode, char *sender, char *message)
 // NOTE. this is for LINUX
 // https://stackoverflow.com/a/35190285
 /* 
- * \33[2K   erases the entire line your cursor is currently on
+ * \33[2K   현재 커서가 있는 줄을 모두 지운다.
+ *          erases the entire line your cursor is currently on
  *
- * \033[A   moves your cursor up one line, but in the same column
+ * \033[A   커서를 한 줄 위로 올린다. 단, 줄 내에서의 커서 위치는 변하지 않는다.
+ *          moves your cursor up one line, but in the same column
  *          i.e. not to the start of the line
  * 
- * \r       brings your cursor to the beginning of the line
+ * \r       커서를 현재 줄의 맨 앞으로 옮긴다.
+ *          brings your cursor to the beginning of the line
  *          (r is for carriage return, N.B. carriage returns
  *           do not include a newline so cursor remains on the same line)
  *          but does not erase anything
  * 
- * \b       erase 1 char b ack
+ * \b       1칸 지운다.
+ *          erase 1 char b ack
  */
 void moveCursorUp(int lines, int eraselast)
 {
+    // eraselast가 설정된 경우, 커서를 윗줄로 올리기 전에 커서가 있던 줄을 지우고 간다.
     if (eraselast) printf("\33[2K");
+
+    // 커서 위 lines개의 줄을 지운다.
     for (int i = 0; i < lines; i++) printf("\033[A\33[2K");
+
+    // \033[A는 커서를 처음으로 옮겨 주지 않으므로, 커서를 맨 앞으로 옮겨 준다.
     printf("\r");
-    fflush(0);
+
+    // 출력 버퍼 비움
+    fflush(stdout);
 }
 
 int main(int argc, char *argv[])
@@ -111,6 +128,7 @@ int main(int argc, char *argv[])
     // fd = fileno(stdin);
 
     int namelen;
+    struct ip_mreq join_addr;
     struct sockaddr_in serv_addr;
 
     int prompt_printed = 0;
@@ -129,9 +147,17 @@ int main(int argc, char *argv[])
 
     tr.tv_sec  = RECV_TIMEOUT_SEC;
     tr.tv_usec = RECV_TIMEOUT_USEC;
+    
+    // JOIN MULTICAST GROUP
+    // 239.0.100.1로 조인한다.
+    join_addr.imr_multiaddr.s_addr = inet_addr(mulcast_addr);
+    join_addr.imr_interface.s_addr = htonl(INADDR_ANY);
+    setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void*)&join_addr, sizeof(join_addr));
 
     // SET TIMEOUT OF read()
     // https://stackoverflow.com/a/2939145
+    // 이렇게 하면 아예 소켓 옵션으로 read()에 타임아웃을 걸 수 있어 유용하다.
+    // 바로 위 setsockopt()과는 별개임!
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tr, sizeof(tr));
     
     if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) == -1)
@@ -139,18 +165,29 @@ int main(int argc, char *argv[])
     
     printf("CONNECTED TO SERVER.\n\n");
 
+    /* prompt_printed와 비슷한 역할인데,
+     * 입력 조건 메시지가 처음 출력되는 때와 그 다음부터 출력되는 때를 구분짓는다.
+     *
+     * 문구 출력 위치를 동일 위치로 고정해 주기 위해 존재한다.
+     */
     int warned = 0;
 
-    // NICKNAME INITIALIZATION LOOP
+    ////// NICKNAME INITIALIZATION LOOP //////
+
     while (1)
     {
         printf("NICKNAME: ");
 
         fgets(buf, BUF_SIZE, stdin);
+
+        // 마지막 줄넘김 없애기: '\n' 문자까지 대기 후 (int)0으로 대체
         for (namelen = 0; buf[namelen] != '\n'; namelen++);
         buf[namelen] = 0;
         
+        // 그냥 엔터만 넘긴 경우는 무시한다.
         if (namelen < 1) moveCursorUp(1, 0);
+
+        //// 입력받은 버퍼에서 닉네임 조건 충족 여부를 먼저 확인한 후에 서버로 넘긴다.
 
         else if (buf[0] == ' ') {
             moveCursorUp(warned ? 2 : 1, 0);
@@ -191,16 +228,21 @@ int main(int argc, char *argv[])
 
     int is_init = 1;
 
-    // MESSAGE COMMUNICATION LOOP
+    ////// MESSAGE COMMUNICATION LOOP //////
+    
     while (1)
     {
         int cmdcode_prev = cmdcode;
 
         // RECEIVE MESSAGE
+        // recv_msg()에서 read()를 실행하여 setsockopt으로 설정한 대기 시간만큼 기다린다.
         if (recv_msg(&cmdcode, sender, message) < 0) {
             // printf("No message.\n");
         }
+        
         else {
+            // 주석코드는 입력 버퍼 유지에 대한 시도이니 무시해도 됨
+            // 해결법 있으면 알려주세요
             // Some attempts to retain what the user was typing after msg receival...
             // fgets(buf, BUF_SIZE, stdin);
             // printf("%s\n", buf);
@@ -211,10 +253,13 @@ int main(int argc, char *argv[])
                 if (!is_init) moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
                 else is_init = 0;
 
+                // CODE 1000: MESSAGE FROM SERVER
                 if (cmdcode == 1000) {
                     if (cmdcode_prev == 1000) moveCursorUp(1, 0);
                     printf("%s============ %s ============\n\n\n", cmdcode_prev == 1000 ? "" : "\n\n", message);
                 }
+
+                // CODE 3000: MESSAGE FROM CLIENT
                 else printf("\n%s sent: %s\n", sender, message);
 
                 prompt_printed = 0;
