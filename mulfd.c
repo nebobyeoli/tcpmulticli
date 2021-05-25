@@ -5,6 +5,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <termios.h>
 #include <unistd.h>
 #include <arpa/inet.h>
 #include <sys/socket.h>
@@ -114,6 +115,100 @@ void moveCursorUp(int lines, int eraselast)
     fflush(stdout);
 }
 
+
+// // 리눅스에서 C언어로 getch() 함수 작성
+// // https://lunace.tistory.com/6 감사합니다
+// int getch()
+// {
+//     int c;
+//     struct termios oldattr, newattr;
+
+//     tcgetattr(STDIN_FILENO, &oldattr);           // 현재 터미널 설정 읽음
+//     newattr = oldattr;
+//     newattr.c_lflag &= ~(ICANON | ECHO);         // CANONICAL과 ECHO 끔
+//     newattr.c_cc[VMIN] = 1;                      // 최소 입력 문자 수를 1로 설정
+//     newattr.c_cc[VTIME] = 0;                     // 최소 읽기 대기 시간을 0으로 설정
+//     tcsetattr(STDIN_FILENO, TCSANOW, &newattr);  // 터미널에 설정 입력
+//     c = getchar();                               // 키보드 입력 읽음
+//     tcsetattr(STDIN_FILENO, TCSANOW, &oldattr);  // 원래의 설정으로 복구
+//     return c;
+// }
+
+// kbhit() + getch() linux
+int gett(int key)
+{
+    int c;
+    struct termios oldattr, newattr;
+
+    tcgetattr(STDIN_FILENO, &oldattr);           // 현재 터미널 설정 읽음
+    newattr = oldattr;
+    newattr.c_lflag &= ~(ICANON | ECHO);         // CANONICAL과 ECHO 끔
+    newattr.c_cc[VMIN] = 1;                      // 최소 입력 문자 수를 1로 설정
+    newattr.c_cc[VTIME] = 0;                     // 최소 읽기 대기 시간을 0으로 설정
+    tcsetattr(STDIN_FILENO, TCSANOW, &newattr);  // 터미널에 설정 입력
+
+    // KBHIT
+    struct timeval tv = { 0L, 0L };
+    fd_set fds;
+    FD_ZERO(&fds);
+    FD_SET(0, &fds);
+    if (!select(1, &fds, NULL, NULL, &tv)) {
+        tcsetattr(STDIN_FILENO, TCSANOW, &oldattr);
+        return 0;
+    }
+
+    // GETCH
+    c = getchar();                               // 키보드 입력 읽음
+
+    tcsetattr(STDIN_FILENO, TCSANOW, &oldattr);  // 원래의 설정으로 복구
+
+    return c == key;
+}
+
+// https://stackoverflow.com/a/448982
+
+// struct termios orig_termios;
+
+// void reset_terminal_mode()
+// {
+//     tcsetattr(0, TCSANOW, &orig_termios);
+// }
+
+// void set_conio_terminal_mode()
+// {
+//     struct termios new_termios;
+
+//     /* take two copies - one for now, one for later */
+//     tcgetattr(0, &orig_termios);
+//     memcpy(&new_termios, &orig_termios, sizeof(new_termios));
+
+//     /* register cleanup handler, and set the new terminal mode */
+//     atexit(reset_terminal_mode);
+//     cfmakeraw(&new_termios);
+//     tcsetattr(0, TCSANOW, &new_termios);
+// }
+
+// int kbhit()
+// {
+//     struct timeval tv = { 0L, 0L };
+//     fd_set fds;
+//     FD_ZERO(&fds);
+//     FD_SET(0, &fds);
+//     return select(1, &fds, NULL, NULL, &tv);
+// }
+
+// int getch()
+// {
+//     int r;
+//     unsigned char c;
+//     if ((r = read(0, &c, sizeof(c))) < 0) {
+//         return r;
+//     } else {
+//         return c;
+//     }
+// }
+
+
 int main(int argc, char **argv)
 {
     if (argc != 2) {
@@ -196,8 +291,8 @@ int main(int argc, char **argv)
         FD_ZERO(&stdinfd);
         FD_SET(0, &stdinfd);  // fd 0 = stdin
 
-        ti.tv_sec  = GETSERVMSG_TIMEOUT_SEC;
-        ti.tv_usec = GETSERVMSG_TIMEOUT_USEC;
+        // ti.tv_sec  = 0;
+        // ti.tv_usec = 2000;
         
         // REPRINT PROMPT ONLY ON OUTPUT OCCURENCE
         // 수신 메시지 존재 or 입력 버퍼 비워짐으로 추가 출력이 존재하는 경우에만 '입력 문구' 출력.
@@ -207,10 +302,41 @@ int main(int argc, char **argv)
             prompt_printed = 1;
         }
 
+        // // IMPLEMENT VIEW CLIENT LIST HERE
+        // // if (GETCH(ESC))
+        // // <...>
+        // set_conio_terminal_mode();
+        // if (select(1, &stdinfd, NULL, NULL, &ti) > 0)
+        // {
+        //     if (getch() == 27) { printf("esc"); fflush(0); }
+        //     // if (kbhit()) { printf("%d!", getch()); fflush(0); }
+        // }
+        // reset_terminal_mode();
+
+        // FD_ZERO(&stdinfd);
+        // FD_SET(0, &stdinfd);  // fd 0 = stdin
+
+        ti.tv_sec  = GETSERVMSG_TIMEOUT_SEC;
+        ti.tv_usec = GETSERVMSG_TIMEOUT_USEC;
+        
+        // // int c = getch();
+        // set_conio_terminal_mode();
+        // if (kbhit() && getch() == 27) {
+        //     printf("esc");
+        //     fflush(0);
+        //     reset_terminal_mode();
+        // }
+        
+        if (gett(27)) {
+            printf("27");
+            fflush(0);
+        }
+
         // GET SERVER MSG
         // ON STDIN STREAM DATA EXISTENCE
-        if (select(1, &stdinfd, NULL, NULL, &ti) > 0)
+        else if (select(1, &stdinfd, NULL, NULL, &ti) > 0)
         {
+            // reset_terminal_mode();
             // INPUT
             memset(buf, 0, BUF_SIZE);
             fgets(buf, BUF_SIZE, stdin);
