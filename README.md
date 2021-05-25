@@ -23,7 +23,7 @@ Cmd code | Meaning
 **2000** | Set client nickname
 **3000** | Message communication
 
-## Message format
+## Message data
 
 Order | Name          | Size variable  | Size
 ----- | ------------- | -------------- | ----------
@@ -39,6 +39,10 @@ Example:
 // + 1 AND + 2 BELOW INDICATES LEAVING OUT [NULL] CHARACTERS
 // AS SEPARATORS TO DISTINGUISH FORMAT PARAMETERS ON read()
 
+/* sprintf()를 이용해,
+ * 한 개의 NULL 문자를 사이에 두고 char 배열에 작성하는 기법으로
+ * 각 메시지 데이터를 구분지어 저장한다.
+ */
 // APPEND CMDCODE
 sprintf(message, "%d", cmdcode);
 // APPEND NAME OF SENDER
@@ -55,7 +59,7 @@ sprintf(&message[CMDCODE_SIZE + NAME_SIZE + 2], "%s", msg);
 
 ## Emoji support
 
-`temporarily? doubled the BUF_SIZE because of it`
+`temporarily. quadrupled the BUF_SIZE because of it`
 
 Command   | Description | Appearance
 --------- | ----------- | ----------
