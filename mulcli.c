@@ -467,7 +467,7 @@ int main(int argc, char *argv[])
 
                     else
                     {
-                        memset(cmd, 0, CMD_SIZE);
+                        memset(cmd, ci = 0, CMD_SIZE);
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
                         cmdmode = 1;
                     }
