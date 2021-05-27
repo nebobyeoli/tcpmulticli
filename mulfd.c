@@ -231,7 +231,6 @@ int getch()
                     break;
             }
         }
-        
     }
 }
 
@@ -380,7 +379,7 @@ int main(int argc, char **argv)
 
                     else
                     {
-                        memset(cmd, 0, CMD_SIZE);
+                        memset(cmd, ci = 0, CMD_SIZE);
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
                         cmdmode = 1;
                     }
@@ -657,7 +656,7 @@ int main(int argc, char **argv)
 
                             memcpy(mdest, msg, inbet);
                             sprintf(&mdest[inbet], "\r\n%s\r\n%s", myh, &msg[inbet + sizeof(":myh:") - 1]);
-                            printf("%s\r\n%s\r\n", msg, mdest);
+                            printf("%s\r\n", mdest);
                             fflush(stdout);
                         }
 
@@ -672,7 +671,7 @@ int main(int argc, char **argv)
                     }
                 }
 
-                memset(buf, 0, BUF_SIZE);
+                memset(buf, bi = 0, BUF_SIZE);
 
                 if (--state <= 0) break;
             }
