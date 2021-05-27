@@ -449,7 +449,7 @@ int main(int argc, char *argv[])
                     reset_terminal_mode();
 
                     moveCursorUp(PP_LINE_SPACE, 0);
-                    printf("\r\nClosed server.");
+                    printf("\r\nClosed client.");
                     for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n");
 
                     exit(0);
@@ -467,7 +467,7 @@ int main(int argc, char *argv[])
 
                     else
                     {
-                        memset(cmd, 0, CMD_SIZE);
+                        memset(cmd, ci = 0, CMD_SIZE);
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
                         cmdmode = 1;
                     }
