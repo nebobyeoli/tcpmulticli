@@ -166,7 +166,7 @@ int kbhit()
  *   COMMAND KEY들, 예를 들어 방향키와 DELETE 키, ALT + KEY 같은 특수 키들의 경우에는
  *   일반 키와는 달리 한번에 3 ~ 5개의 키 인식 정수들을 날려 줍니다!
  * 
- *   Pull Request의 [other?] 부에 작성한 표를 참고하십쇼!
+ *   Pull Request의 [other?] 단락에 작성한 표를 참고하십쇼!
  *   https://github.com/nebobyeoli/tcpmulticli/pull/4
  * 
  * 방법:
