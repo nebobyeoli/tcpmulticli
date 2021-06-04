@@ -13,6 +13,14 @@
 #include <sys/select.h>
 #include <sys/time.h>
 
+/* 이중 연결 리스트 api
+ * https://github.com/clibs/list
+ *
+ * 컴파일 시 아래와 같이 사용: 메인 소스 명시 후 추가 소스명 모두 입력
+ * gcc -o mulfd mulfd.c list.c list_node.c list_iterator.c
+ */
+#include "list.h"
+
 //// 나중에 필요하다 싶으면 아래 변수들 함수들 헤더랑 따로 만들어서 담을 것
 
 #define BUF_SIZE        1024 * 2    // 임시 크기(1024 * n): 수신 시작과 끝에 대한 cmdcode 추가 사용 >> MMS 수신 구현 전까지
@@ -26,6 +34,8 @@
 
 #define MIN_ERASE_LINES     1           // 각 출력 사이의 줄 간격 - 앞서 출력된 '입력 문구'를 포함하여, 다음 메시지 출력 전에 지울 줄 수
 #define PP_LINE_SPACE       3           // 최솟값: 1  // 출력되는 메시지들과 '입력 문구' 사이 줄 간격
+
+#define gotoxy(x,y) printf("\033[%d;%dH", (y), (x))
 
 // 지정된 멀티캐스팅 주소
 char mulcast_addr[] = "239.0.100.1";
@@ -76,6 +86,7 @@ void sendAll(int clnt_cnt, int cmdcode, char *sender, char *msg, char *servlog)
     
     if (servlog) printf("\r\nMESSAGE FROM SERVER: %s\r\n", servlog);
 
+    printf("Length of buf: %d\r\n", (int)strlen(msg));
     printf("Total msgsize: %d of %d maximum\r\n", CMDCODE_SIZE + NAME_SIZE + (int)strlen(msg), BUF_SIZE);
 
     for (i = 0; i < clnt_cnt; i++)
@@ -121,6 +132,38 @@ void moveCursorUp(int lines, int eraselast)
 
     // 출력 버퍼 비움
     fflush(stdout);
+}
+
+// LIST DATA TO BUFFER
+/* 인수들
+ * 
+ * char   *buf      : 리스트 데이터를 저장할 배열
+ * list_t *list     : 읽을 리스트
+ * int    *list_len : 리스트 길이 저장 변수
+ * int     emptylist: 리스트 초기화 여부
+ */
+void transfer_list_data(char *buf, list_t *list, int *list_len, int emptylist)
+{
+    list_node_t *node;
+    list_iterator_t *it = list_iterator_new(list, LIST_HEAD);
+
+    int offset = 0;
+    
+    // 각 노드에 단일 char가 저장되어 있는 list의 입력 데이터를
+    // buf 배열에 저장!
+    while (node = list_iterator_next(it))
+    {
+        sprintf(&buf[offset++], "%c", node -> val);
+        
+        // buf 배열에 저장 완료된 node값은 free해 준다.
+        if (emptylist) list_remove(list, node);
+    }
+
+    //// 리스트 내용 복사 완료 ////
+    
+    list_iterator_destroy(it);
+
+    if (emptylist) *list_len = 0;
 }
 
 // https://stackoverflow.com/a/448982
@@ -258,6 +301,19 @@ int main(int argc, char **argv)
     char message[BUF_SIZE];
     char cmd[CMD_SIZE];
 
+    /* 실제 입력 관리: 이중 리스트 api 사용.
+     * 엔터를 쳤을 때 blist 또는 clist의 데이터를 buf[]로 저장하고,
+     * 해당 리스트를 초기화한다.
+     * 
+     * bllen, cllen은 각 지정 리스트에서의 노드(입력된 char)의 수를 의미한다.
+     * 길이 확인용 변수로 실제 삽입/삭제 작업에는 쓰이지 않는다. (!= list_iterator_t *it)
+     */
+    list_t *blist = list_new();     // buf_list
+    int bllen = 0;                  // buf_list_len
+
+    list_t *clist = list_new();     // cmd_list
+    int cllen = 0;                  // cmd_list_len
+
     /* sendAll()의 사용 형식에 맞추기 위한 '서버 이름'.
      * sendAll()에 사용할 때는 char *sender 인자에 넣으면 됨
      */
@@ -324,8 +380,8 @@ int main(int argc, char **argv)
     memset(message, 0, BUF_SIZE);
     memset(cmd, 0, CMD_SIZE);
 
-    int bi = 0;     // buf string index
-    int ci = 0;     // cmd string index
+    // int bi = 0;     // buf string index
+    // int ci = 0;     // cmd string index
 
     ////// CLIENT INTERACTION LOOP. //////
 
@@ -346,11 +402,9 @@ int main(int argc, char **argv)
         {
             int c = getch();
 
-            /* 여긴 cmdmode 여부에 따라 다른 버퍼와 버퍼 인덱스 사용함
-             * message : 버퍼 buf, 버퍼 인덱스 bi
-             * cmdmode : 버퍼 cmd, 버퍼 인덱스 ci
-             * 삼항자 써서 숏코딩 날릴 수도 있지만 여긴 가독성이 더 중요해 보여서
-             * 그리고 명령어 추가하다 보면 어차피 다 확장해야 할 듯 싶어서
+            // cmdmode 여부에 따라 다른 리스트와 버퍼 배열 사용.
+            /* message : 입력 리스트 blist, 리스트 노드 수 bllen, 버퍼 배열 buf 
+             * cmdmode : 입력 리스트 clist, 리스트 노드 수 cllen, 버퍼 배열 cmd
              */
             switch (c)
             {
@@ -360,12 +414,13 @@ int main(int argc, char **argv)
                 {
                     reset_terminal_mode();
 
+                    close(serv_sock);
+
                     moveCursorUp(PP_LINE_SPACE, 0);
                     printf("\r\nClosed server.");
                     for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n");
 
-                    exit(0);
-                    break;
+                    return 0;
                 }
 
                 // PRESSED ESC
@@ -373,13 +428,14 @@ int main(int argc, char **argv)
                 {
                     if (cmdmode)
                     {
+                        // cmdmode에서 나갈 때
+                        memset(cmd, 0, CMD_SIZE);
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1);
                         cmdmode = 0;
                     }
 
                     else
                     {
-                        memset(cmd, ci = 0, CMD_SIZE);
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
                         cmdmode = 1;
                     }
@@ -392,6 +448,8 @@ int main(int argc, char **argv)
                 // 뭐 나중에 쓸수도 있지만
                 // 쓰는 게 나을 수도 있겠지만.
                 // 아마도 나중엔 쓰는 게 나을 듯.
+                // 
+                // 쓸거임
                 case 17: case 18: case 19: case 20:
                 {
                     // UP, DOWN, RIGHT, LEFT
@@ -403,16 +461,40 @@ int main(int argc, char **argv)
                 // PRESSED BACKSPACE
                 case 127:
                 {
-                    if (cmdmode && ci > 0)
+                    // cmdmode에서는 줄넘김 안 쓰는 걸로 가정.
+                    if (cmdmode && cllen > 0)
                     {
                         printf("\b \b");
-                        cmd[--ci] = 0;
+                        list_rpop(clist);
+                        cllen--;
                     }
 
-                    else if (bi > 0)
+                    // default (message) mode
+                    else if (bllen > 0)
                     {
-                        printf("\b \b");
-                        buf[--bi] = 0;
+                        if (blist -> tail -> val == '\n')
+                        {
+                            printf("\033[A");
+                            list_rpop(blist);
+                            list_rpop(blist);
+                            bllen -= 2;
+
+                            // move cursor right
+                            // iterate through list
+                            list_node_t *node = blist -> tail;
+                            while (node -> val != '\n') {
+                                printf("\033[C");
+                                if (node == blist -> head) break;
+                                node = node -> prev;
+                            }
+                        }
+                        
+                        else
+                        {
+                            printf("\b \b");
+                            list_rpop(blist);
+                            bllen--;
+                        }
                     }
                     
                     break;
@@ -421,20 +503,26 @@ int main(int argc, char **argv)
                 // PRESSED CTRL + BACKSPACE
                 case 8:
                 {
-                    int c = 0;
-
                     if (cmdmode)
                     {
-                        for (ci; ci > 0 && cmd[ci - 1] == ' '; printf("\b \b"), cmd[--ci] = 0, c++);
-                        for (ci; ci > 0 && cmd[ci - 1] != ' '; printf("\b \b"), cmd[--ci] = 0, c++);
-                        for (ci; ci > 0 && cmd[ci - 1] == ' '; printf("\b \b"), cmd[--ci] = 0, c++);
+                        /* 줄넘김과 두 번째 공백 전까지 지움
+                         * 두 번째 공백: e.g. 맨 끝 글자가 공백 문자인 상태에서 CTRL + BACKSPACE를 누른 경우
+                         * 그 공백을 지움과 함께 그 다음 공백까지 지움
+                         * 
+                         * 반복문 세 개: 각각 그 첫 번째 공백까지, 공백이 없는 구간, 두 번째 공백까지의
+                         * 문자 지움 지시를 의미함
+                         */
+
+                        for (cllen; cllen > 0 && clist -> tail -> val != '\n' && clist -> tail -> val == ' '; printf("\b \b"), list_rpop(clist), cllen--);
+                        for (cllen; cllen > 0 && clist -> tail -> val != '\n' && clist -> tail -> val != ' '; printf("\b \b"), list_rpop(clist), cllen--);
+                        for (cllen; cllen > 0 && clist -> tail -> val != '\n' && clist -> tail -> val == ' '; printf("\b \b"), list_rpop(clist), cllen--);
                     }
 
                     else
                     {
-                        for (bi; bi > 0 && buf[bi - 1] == ' '; printf("\b \b"), buf[--bi] = 0, c++);
-                        for (bi; bi > 0 && buf[bi - 1] != ' '; printf("\b \b"), buf[--bi] = 0, c++);
-                        for (bi; bi > 0 && buf[bi - 1] == ' '; printf("\b \b"), buf[--bi] = 0, c++);
+                        for (bllen; bllen > 0 && blist -> tail -> val != '\n' && blist -> tail -> val == ' '; printf("\b \b"), list_rpop(blist), bllen--);
+                        for (bllen; bllen > 0 && blist -> tail -> val != '\n' && blist -> tail -> val != ' '; printf("\b \b"), list_rpop(blist), bllen--);
+                        for (bllen; bllen > 0 && blist -> tail -> val != '\n' && blist -> tail -> val == ' '; printf("\b \b"), list_rpop(blist), bllen--);
                     }
                     
                     break;
@@ -452,17 +540,24 @@ int main(int argc, char **argv)
                 // PRESSED ENTER
                 case 13:
                 {
+                    // 내용 없이 엔터 때린 경우는 무시
+                    if (bllen == 0) break;
+
                     if (cmdmode)
                     {
+                        transfer_list_data(cmd, clist, &cllen, 1);
+
                         // 
                         // DO SOMETHING WITH THE COMMAND HERE...
                         // 명령에 따라 클라이언트 목록 뽑든가
-                        // cmd[ci] ...
+                        // cmd[some_index] ...
                         // 
                     }
 
                     else
                     {
+                        transfer_list_data(buf, blist, &bllen, 1);
+
                         // CHECK FOR EMOJIS
                         // 아래에 대한 구체적 주석은 emojis 브랜치의 check_append_emojis()에 작성할 것.
                         // 아래 내용은 해당 함수의 사용으로 대체될 것.
@@ -485,8 +580,9 @@ int main(int argc, char **argv)
                         if (index)  sendAll(clnt_cnt, 1000, serv_name, umdest, mdest);
                         else        sendAll(clnt_cnt, 1000, serv_name, buf, buf);
 
-                        memset(buf, bi = 0, BUF_SIZE);
                         prompt_printed = 0;
+                        
+                        memset(buf, 0, BUF_SIZE);
                     }
 
                     break;
@@ -504,22 +600,31 @@ int main(int argc, char **argv)
                     else
                     {
                         printf("\r\n");
-                        buf[bi++] = '\r';
-                        buf[bi++] = '\n';
+                        list_rpush(blist, list_node_new('\r'));
+                        list_rpush(blist, list_node_new('\n'));
+                        bllen += 2;
                     }
 
                     break;
                 }
                 
                 // PRESSED OTHER
+                // 타이핑 중
                 default:
                 {
                     printf("%c", c);
 
                     if (cmdmode)
-                        cmd[ci++] = c;
+                    {
+                        list_rpush(clist, list_node_new(c));
+                        cllen++;
+                    }
+
                     else
-                        buf[bi++] = c;
+                    {
+                        list_rpush(blist, list_node_new(c));
+                        bllen++;
+                    }
 
                     break;
                 }
@@ -671,7 +776,7 @@ int main(int argc, char **argv)
                     }
                 }
 
-                memset(buf, bi = 0, BUF_SIZE);
+                memset(buf, 0, BUF_SIZE);
 
                 if (--state <= 0) break;
             }

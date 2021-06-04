@@ -143,6 +143,38 @@ Command   | Description | Appearance
 </details>
 
 <details>
+  <summary><b>Cursor manipulation <i>(gotoxy)</i> in linux</b></summary><br>
+
+  ```c
+  // Question: How to position the input text cursor in C?
+  // https://stackoverflow.com/questions/26423537/how-to-position-the-input-text-cursor-in-c
+  ```
+
+  ```c
+  // Answer 1: https://stackoverflow.com/a/26423946 comment below
+
+  // gotoxy(x, y) linux
+  #define gotoxy(x,y) printf("\033[%d;%dH", (y), (x))
+
+  ```
+
+  ```c
+  // Answer 2: https://stackoverflow.com/a/26423857
+
+  // In the linux terminal you may use terminal commands to move your cursor, such as
+  printf("\033[8;5Hhello");   // Move to (8, 5) and output hello
+
+  // other similar commands:
+  printf("\033[XA");  // Move up X lines;
+  printf("\033[XB");  // Move down X lines;
+  printf("\033[XC");  // Move right X columns;
+  printf("\033[XD");  // Move left X columns;
+  printf("\033[2J");  // Clear screen
+
+  ```
+</details>
+
+<details>
   <summary><b>Mimicking str.replace functioning behavior in C</b></summary><br>
 
   ```c
