@@ -549,7 +549,7 @@ int main(int argc, char **argv)
 
                         // 
                         // DO SOMETHING WITH THE COMMAND HERE...
-                        // 명령에 따라 클라이언트 목록 뽑든가
+                        // 명령어에 따른 동작 실행 e.g. 클라이언트 목록 뽑기
                         // cmd[some_index] ...
                         // 
                     }
