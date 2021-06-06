@@ -1,6 +1,9 @@
 // From ECHO CLIENT
 // + MULTICAST RECEIVE
 
+// 컴파일 시 아래 복사해서 사용: 메인 소스 명시 후 추가 소스명 모두 입력
+// gcc -o mulcli mulcli.c list/list.c list/list_node.c list/list_iterator.c
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,9 +18,6 @@
 
 /* 이중 연결 리스트 api
  * https://github.com/clibs/list
- *
- * 컴파일 시 아래와 같이 사용: 메인 소스 명시 후 추가 소스명 모두 입력
- * gcc -o mulfd mulfd.c list.c list_node.c list_iterator.c
  */
 #include "list.h"
 
@@ -222,7 +222,7 @@ int kbhit()
  */
 int getch()
 {
-    // 어쩌다 kbhit()까지 확있했는데도 read()할 거 없으면 그냥 그거 반환하기로
+    // 어쩌다 kbhit()까지 확인했는데도 read()할 거 없으면 그냥 그거 반환하기로
     int r;
 
     // 키 하나 눌렀을 때 반환되는 정수들
@@ -275,7 +275,7 @@ int getch()
 int main(int argc, char *argv[])
 {
     if (argc != 3) {
-        printf("Usage : %s <IP> <port>\n", argv[0]);
+        printf("Usage : %s <IP> <PORT>\n", argv[0]);
         exit(1);
     }
     
@@ -628,7 +628,7 @@ int main(int argc, char *argv[])
 
                         // 
                         // DO SOMETHING WITH THE COMMAND HERE...
-                        // 명령에 따라 클라이언트 목록 뽑든가
+                        // 명령어에 따른 동작 실행 e.g. 클라이언트 목록 뽑기
                         // cmd[some_index] ...
                         // 
                     }
