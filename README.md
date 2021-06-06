@@ -13,9 +13,23 @@ char mulcast_addr[] = "239.0.100.1";
 
 ## Sources
 
-Server source   | Client source
---------------- | -------------
-[`mulfd.c (main branch)`](https://github.com/nebobyeoli/tcpmulticli/blob/main/mulfd.c) | [`mulcli.c (main branch)`](https://github.com/nebobyeoli/tcpmulticli/blob/main/mulcli.c)
+Server source   | Client source | `list` source
+--------------- | ------------- | -------------
+[`mulfd.c (main branch)`](https://github.com/nebobyeoli/tcpmulticli/blob/main/mulfd.c) | [`mulcli.c (main branch)`](https://github.com/nebobyeoli/tcpmulticli/blob/main/mulcli.c) | [`clibs/list`](https://github.com/clibs/list)
+
+## Compiling
+
+```sh
+gcc -o mulfd  mulfd.c  list/list.c list/list_node.c list/list_iterator.c
+gcc -o mulcli mulcli.c list/list.c list/list_node.c list/list_iterator.c
+```
+
+## Usage
+
+```sh
+./mulfd  <PORT>
+./mulcli <IP> <PORT>
+```
 
 ## Branches
 
@@ -78,7 +92,176 @@ Command   | Description | Appearance
 
 ### 소스 중 특정 일부씩 참고용
 
-#### `알아낸 거 목록`
+###
+
+<details>
+  <summary><b>About custom function <i>moveCursorColumnblock()</i></b></summary><br>
+
+  ```c
+  // 4개 케이스를 하나로 줄이는 과정에서 좀 <헷갈리게> 생겨먹어지게 되었기 때문에
+  // 원래 switch-case문에서 작성한 코드를
+  // 삽입하는 바 이 다
+  // 안 그러면 아무래도 어쩌다 <내가> 나중에 망할 것 같아서
+  // 그 렇 다
+  ```
+
+  ```c
+  // 각각의 moveCursorColumnblock()과 바로 아래 2~3줄의 코드는 같은 역할을 수행한다
+  // 요 아래 과정들을 한 함수로 뽀개 넣으면 일단 중복 코드가 3줄 x 8개나 있던 것이 확 줄어드는 장점이 있다
+  // 실제 [CTRL + ERASEKEY] 작동들 더 들여다보면서 실 코드에서의 반복 조건들은 좀 바뀔 수 있음
+  ```
+
+  <details>
+    <summary><b>원래 썼던 switch/case 내용</b></summary><br>
+  
+  ```c
+  // CTRL + LEFT ARROW [←]
+  case -20:
+  {
+      if (cmdmode)
+      {
+          // cp = moveCursorColumnblock(clist, cp, "\b", 0, LIST_HEAD);
+          for (         ; cp != clist->head && cp->val != '\n' && cp->val == ' '; printf("\b"), cp = cp->prev, i++);
+          if  (!i) for (; cp != clist->head && cp->val != '\n' && cp->val != ' '; printf("\b"), cp = cp->prev, i++);
+      }
+  
+      else
+      {
+          // bp = moveCursorColumnblock(blist, bp, "\b", 0, LIST_HEAD);
+          for (         ; bp != blist->head && bp->val != '\n' && bp->val == ' '; printf("\b"), bp = bp->prev, i++);
+          if  (!i) for (; bp != blist->head && bp->val != '\n' && bp->val != ' '; printf("\b"), bp = bp->prev, i++);
+      }
+  
+      break;
+  }
+  
+  // CTRL + RIGHT ARROW [→]
+  case -19:
+  {
+      if (cmdmode)
+      {
+          // cp = moveCursorColumnblock(clist, cp, "\033[C", 0, LIST_TAIL);
+          for (         ; cp != clist->tail && cp->next->val != '\n' && cp->next->val != ' '; printf("\033[C"), cp = cp->next, i++);
+          if  (!i) for (; cp != clist->tail && cp->next->val != '\n' && cp->next->val == ' '; printf("\033[C"), cp = cp->next, i++);
+      }
+  
+      else
+      {
+          // bp = moveCursorColumnblock(blist, bp, "\033[C", 0, LIST_TAIL);
+          for (         ; bp != blist->tail && bp->next->val != '\n' && bp->next->val != ' '; printf("\033[C"), bp = bp->next, i++);
+          if  (!i) for (; bp != blist->tail && bp->next->val != '\n' && bp->next->val == ' '; printf("\033[C"), bp = bp->next, i++);
+      }
+  
+      break;
+  }
+  
+  // PRESSED CTRL + BACKSPACE
+  case 8:
+  {
+      if (cmdmode)
+      {
+          // cp = moveCursorColumnblock(clist, cp, "\b", 1, LIST_HEAD);
+          for (         ; cp != clist->head && cp->val != '\n' && cp->val == ' '; printf("\b"), cp = cp->prev, list_remove(clist, cp->next), i++);
+          if  (!i) for (; cp != clist->head && cp->val != '\n' && cp->val != ' '; printf("\b"), cp = cp->prev, list_remove(clist, cp->next), i++);
+          print_behind_cursor(clist, cp, 0, ' ', i);
+      }
+  
+      else
+      {
+          // bp = moveCursorColumnblock(blist, bp, "\b", 1, LIST_HEAD);
+          for (         ; bp != blist->head && bp->val != '\n' && bp->val == ' '; printf("\b"), bp = bp->prev, list_remove(blist, bp->next), i++);
+          if  (!i) for (; bp != blist->head && bp->val != '\n' && bp->val != ' '; printf("\b"), bp = bp->prev, list_remove(blist, bp->next), i++);
+          print_behind_cursor(blist, bp, 0, ' ', i);
+      }
+      
+      break;
+  }
+  
+  // PRESSED CTRL + DELETE
+  case -128:
+  {
+      if (cmdmode)
+      {
+          // moveCursorColumnblock(clist, cp, 0, 1, LIST_TAIL);
+          for (         ; cp != clist->tail && cp->next->val != '\n' && cp->next->val == ' '; list_remove(clist, cp->next), i++);
+          if  (!i) for (; cp != clist->tail && cp->next->val != '\n' && cp->next->val != ' '; list_remove(clist, cp->next), i++);
+          print_behind_cursor(clist, cp, 0, ' ', i);
+      }
+  
+      else
+      {
+          // moveCursorColumnblock(blist, bp, 0, 1, LIST_TAIL);
+          for (         ; bp != blist->tail && bp->next->val != '\n' && bp->next->val == ' '; list_remove(blist, bp->next), i++);
+          if  (!i) for (; bp != blist->tail && bp->next->val != '\n' && bp->next->val != ' '; list_remove(blist, bp->next), i++);
+          print_behind_cursor(blist, bp, 0, ' ', i);
+      }
+      
+      break;
+  }
+
+  ```
+  </details>
+  
+  <details>
+    <summary><b>단일 함수로 <sup>반복 사용부! 가</sup> 축약된 내용</b></summary><br>
+  
+  ```c
+  // USAGE OF HORIZONTAL CURSOR MOVEMENT - BY BLOCKS
+  /*
+   * CTRL + MOVEKEY : 단어 단위로 커서 이동
+   * CTRL + ERASEKEY: 단어 단위로 버퍼 데이터 지움
+   *
+   * 장점:
+   *   일단 보고 쓰기 확 편해짐.
+   *   공백 순서 같은 거 수정하고 싶을 때 8곳에서 수정해 주지 않아도 됨.
+   * 
+   * int modifying: 주어진 list_t *list의 데이터를 함께 수정하는지 여부
+   *   0: CTRL + MOVEKEY
+   *   1: CTRL + ERASEKEY
+   * 
+   * int dirTo:
+   *   리스트의 dirTo까지 확인
+   *   0: LIST_HEAD: 리스트의 head 방향으로 반복문 돌아감
+   *   1: LIST_TAIL: 리스트의 tail 방향으로 반복문 돌아감
+   * 
+   * tp != (dirTo ? list->tail : list->head):
+   * 원래 list_node_t *end = (dirTo ? list->tail : list->head)로 초기조건 변수를 만들어 저장하려 했으나
+   * 각 반복문이 매 바퀴를 돌 때마다 list->tail값이 변화되기 때문에
+   * end가 가리킬 위치를 매번 갱신해 주지 않으면, 줄의 맨 끝에서 [CTRL + DELETE]를 눌렀을 때
+   * Segmentation fault (core dumped)가 발생한다.
+   */
+  list_node_t* moveCursorColumnblock(list_t *list, list_node_t *p, char *printstr, int modifying, int dirTo)
+  {
+      int i = 0;
+      list_node_t *tp = p;
+  
+      while (tp != (dirTo ? list->tail : list->head) && (dirTo ? tp->next : tp)->val != '\n' && (dirTo ? tp->next->val != ' ' : tp->val == ' '))
+      {
+          if (printstr) { printf("%s", printstr); tp = (dirTo ? tp->next : tp->prev); }
+          if (modifying) list_remove(list, tp->next);
+          i++;
+      }
+  
+      if (!i) while (tp != (dirTo ? list->tail : list->head) && (dirTo ? tp->next : tp)->val != '\n' && (dirTo ? tp->next->val == ' ' : tp->val != ' '))
+      {
+          if (printstr) { printf("%s", printstr); tp = (dirTo ? tp->next : tp->prev); }
+          if (modifying) list_remove(list, tp->next);
+          i++;
+      }
+  
+      if (modifying) print_behind_cursor(list, tp, 0, ' ', i);
+  
+      return tp;
+  }
+
+  ```
+  </details>
+
+</details>
+
+##
+
+### `알아낸 거 목록`
 
 <details>
   <summary><b>Cursor manipulation (go <i>up</i>) in linux</b></summary><br>

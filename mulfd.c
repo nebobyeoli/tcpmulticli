@@ -1,6 +1,9 @@
 // From TCP SERVER
 // CAN HANDLE MULTIPLE CLIENTS
 
+// 컴파일 시 아래 복사해서 사용: 메인 소스 명시 후 추가 소스명 모두 입력
+// gcc -o mulfd mulfd.c list/list.c list/list_node.c list/list_iterator.c
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -15,11 +18,8 @@
 
 /* 이중 연결 리스트 api
  * https://github.com/clibs/list
- *
- * 컴파일 시 아래와 같이 사용: 메인 소스 명시 후 추가 소스명 모두 입력
- * gcc -o mulfd mulfd.c list.c list_node.c list_iterator.c
  */
-#include "list.h"
+#include "list/list.h"
 
 //// 나중에 필요하다 싶으면 아래 변수들 함수들 헤더랑 따로 만들어서 담을 것
 
@@ -30,7 +30,7 @@
 #define MAX_SOCKS       100         // 최대 연결 가능 클라이언트 수
 
 #define GETSERVMSG_TIMEOUT_SEC  0
-#define GETSERVMSG_TIMEOUT_USEC 50000   // 1000000 usec = 1 sec
+#define GETSERVMSG_TIMEOUT_USEC 10000   // 1000000 usec = 1 sec
 
 #define MIN_ERASE_LINES     1           // 각 출력 사이의 줄 간격 - 앞서 출력된 '입력 문구'를 포함하여, 다음 메시지 출력 전에 지울 줄 수
 #define PP_LINE_SPACE       3           // 최솟값: 1  // 출력되는 메시지들과 '입력 문구' 사이 줄 간격
@@ -134,15 +134,116 @@ void moveCursorUp(int lines, int eraselast)
     fflush(stdout);
 }
 
-// LIST DATA TO BUFFER
-/* 인수들
+// USAGE OF HORIZONTAL CURSOR MOVEMENT - BY BLOCKS
+/*
+ * CTRL + MOVEKEY : 단어 단위로 커서 이동
+ * CTRL + ERASEKEY: 단어 단위로 버퍼 데이터 지움
+ *
+ * 장점:
+ *   일단 보고 쓰기 확 편해짐.
+ *   공백 순서 같은 거 수정하고 싶을 때 8곳에서 수정해 주지 않아도 됨.
  * 
- * char   *buf      : 리스트 데이터를 저장할 배열
- * list_t *list     : 읽을 리스트
- * int    *list_len : 리스트 길이 저장 변수
- * int     emptylist: 리스트 초기화 여부
+ * int modifying: 주어진 list_t *list의 데이터를 함께 수정하는지 여부
+ *   0: CTRL + MOVEKEY
+ *   1: CTRL + ERASEKEY
+ * 
+ * int dirTo:
+ *   리스트의 dirTo까지 확인
+ *   0: LIST_HEAD
+ *   1: LIST_TAIL
+ * 
+ * tp != (dirTo ? list->tail : list->head):
+ * 원래 list_node_t *end = (dirTo ? list->tail : list->head)로 초기조건 변수를 만들어 저장하려 했으나
+ * 각 반복문이 매 바퀴를 돌 때마다 list->tail값이 변화되기 때문에
+ * end가 가리킬 위치를 매번 갱신해 주지 않으면, 줄의 맨 끝에서 [CTRL + DELETE]를 눌렀을 때
+ * Segmentation fault (core dumped)가 발생한다.
  */
-void transfer_list_data(char *buf, list_t *list, int *list_len, int emptylist)
+list_node_t* moveCursorColumnblock(list_t *list, list_node_t *p, char *printstr, int modifying, int dirTo)
+{
+    int i = 0;
+    list_node_t *tp = p;
+
+    while (tp != (dirTo ? list->tail : list->head) && (dirTo ? tp->next : tp)->val != '\n' && (dirTo ? tp->next->val == ' ' : tp->val == ' '))
+    {
+        if (printstr) { printf("%s", printstr); tp = (dirTo ? tp->next : tp->prev); }
+        if (modifying) list_remove(list, tp->next);
+        i++;
+    }
+
+    while (tp != (dirTo ? list->tail : list->head) && (dirTo ? tp->next : tp)->val != '\n' && (dirTo ? tp->next->val != ' ' : tp->val != ' '))
+    {
+        if (printstr) { printf("%s", printstr); tp = (dirTo ? tp->next : tp->prev); }
+        if (modifying) list_remove(list, tp->next);
+        i++;
+    }
+
+    if (modifying) print_behind_cursor(list, tp, 0, ' ', i);
+
+    return tp;
+}
+
+// PRINT UNTIL CURSOR TO END OF LINE
+/*
+ * 리스트를 돌며 줄넘김 전까지 char *printstr를 출력하기
+ *
+ * int dirFrom:
+ *   리스트의 dirFrom에서 출발
+ *   0: LIST_HEAD: 리스트의 tail 방향으로 반복문 돌아감
+ *   1: LIST_TAIL: 리스트의 head 방향으로 반복문 돌아감
+ */
+void printUntilEndl(list_t* buflist, list_node_t* list_ptr, char *printstr, int dirFrom)
+{
+    list_node_t *node = list_ptr;
+
+    if (dirFrom == LIST_HEAD)
+    {
+        while (node != buflist->tail && node->next->val != '\n')
+        {
+            printf("%s", printstr);
+            node = node->next;
+        }
+    }
+
+    else  // dirFrom LIST_TAIL
+    {
+        while (node != buflist->head && node->val != '\n')
+        {
+            printf("%s", printstr);
+            node = node->prev;
+        }
+    }
+}
+
+// PRINT DATA AFTER MODIFIED NODE BEHIND CURSOR
+/*
+ * 노드 추가/삭제 후 노드->next의 값들을 커서 뒤로 모두 출력
+ */
+void print_behind_cursor(list_t* list, list_node_t* list_ptr, char firstchar, char lastchar, int lastcharcnt)
+{
+    list_node_t *node = list_ptr;
+    int restlen = 1;
+
+    if (firstchar) printf("%c", firstchar);
+    while (node = node->next)
+    {
+        if (node->val == '\r') break;
+        printf("%c", node->val);
+        restlen++;
+        if (node == list->tail) break;
+    }
+    for (int i = 0; i < lastcharcnt; i++) printf("%c", lastchar);
+    printf(" \033[%dD", restlen + lastcharcnt);
+}
+
+// LIST DATA TO BUFFER
+/* 
+ * 인수들
+ * 
+ * char        *buf      : 리스트 데이터를 저장할 배열
+ * list_t      *list     : 읽을 리스트
+ * int          emptylist: 리스트 초기화 여부
+ */
+list_node_t* transfer_list_data(char *buf, list_t *list, int emptylist)
 {
     list_node_t *node;
     list_iterator_t *it = list_iterator_new(list, LIST_HEAD);
@@ -153,17 +254,67 @@ void transfer_list_data(char *buf, list_t *list, int *list_len, int emptylist)
     // buf 배열에 저장!
     while (node = list_iterator_next(it))
     {
-        sprintf(&buf[offset++], "%c", node -> val);
-        
-        // buf 배열에 저장 완료된 node값은 free해 준다.
-        if (emptylist) list_remove(list, node);
+        if (node->val == 0) continue;
+        sprintf(&buf[offset++], "%c", node->val);
     }
 
     //// 리스트 내용 복사 완료 ////
     
     list_iterator_destroy(it);
 
-    if (emptylist) *list_len = 0;
+    if (emptylist)
+    {
+        list_destroy(list);
+        list = list_new();
+        
+        list_rpush(list, list_node_new(0));
+    }
+
+    return list->head;
+}
+
+// FUCKING JESUS CHRIST
+/* 
+ * 리스트 중간에 삽입한다
+ * 
+ * 문자 4글자 이하, 그 4글자들 사이에
+ * [alt엔터]+[backspace] 3번 이상 치고 엔터 날렸을 때
+ * Segmentation fault (core dumped)
+ * 토요잔류 3시간 동안 못 고쳐서 머리 터졌음
+ * 수학 진도 나가야 되는데 붙잡고 있다는 게
+ * 어쨌든 고침
+ * (list->len)++ 해 주는 게 답이었음
+ * 
+ * list/list.c 내 디버깅 코드:
+ * void list_destroy(list_t *self)에서
+ * 
+ * // for core dump debugging
+ * // printf("[not yet, len: %d]\r\n", len);
+ * 
+ * 보니까 bllen, cllen 따로 만들지 않아도 list_t* 구조체에
+ * len이라는 내장 변수 있어서 그냥 그거 쓰면 되었더라
+ * 
+ * list->len
+ * 
+ * not incrementing it turned out to be the f reason of the f core dumping
+ * incrementing it in [if (list_ptr == list->tail)] ALSO turns out to result in core dumping
+ * 'cause list->len is already incremented IN list_rpush
+ * .
+ * .
+ * 이런 된장할.
+ */
+list_node_t* list_insert(list_t* list, list_node_t* list_ptr, char newvalue)
+{
+    list_node_t *newnode = list_node_new(newvalue);
+
+    if (list_ptr == list->tail) list_rpush(list, newnode);
+    else {
+        (newnode->next = list_ptr->next)->prev = newnode;
+        (newnode->prev = list_ptr)->next = newnode;
+        list->len ++;
+    }
+
+    return newnode;
 }
 
 // https://stackoverflow.com/a/448982
@@ -227,13 +378,12 @@ int kbhit()
  */
 int getch()
 {
-    // 어쩌다 kbhit()까지 확있했는데도 read()할 거 없으면 그냥 그거 반환하기로
-    int r;
-
     // 키 하나 눌렀을 때 반환되는 정수들
     // 추가 키 사용할 때마다 그 키의 반환 개수에 따라 배열 길이 늘려서 사용할 수 있음!
-    char c[5] = { 0, };
+    char c[7] = { 0, };
 
+    // 어쩌다 kbhit()까지 확인했는데도 read()할 거 없으면 그냥 그거 반환하기로
+    int r;
     if ((r = read(0, &c, sizeof(c))) < 0) {
         return r;
     }
@@ -266,21 +416,37 @@ int getch()
                 case 4:
                     // DEL KEY
                     // '128'로 지정했음
-                    if (c[0] == 27 && c[1] == 91 && c[2] == 51 && c[3] == 126) return 128;
+                    if (!strcmp(&c[1], "[3~")) return 128;
                     break;
+                
+                // CTRL + KEY
+                case 6:
+                    // CTRL + ARROWS
+                    if (c[5] > 64 && c[5] < 69) return -1 * c[5] + 48;
 
+                    // CTRL + DELETE
+                    if (!strcmp(&c[1], "[3;5~")) return -128;
+                    break;
+                
+                // 그 외의 (더 많은 정수들을 반환하는) COMMAND KEY 조합
                 // 더 쓸 거 있으면 추가할 것
+                // 원래 키의 음수값 * 10으로 사용하도록 지정했음
+                // 그니까 먹지 마셈
                 default:
+                    return -10 * c[strlen(c) - 1];
                     break;
             }
         }
+
+        else
+            return c[0];
     }
 }
 
 int main(int argc, char **argv)
 {
     if (argc != 2) {
-        printf("Usage: %s <port>\n", argv[0]);
+        printf("Usage: %s <PORT>\n", argv[0]);
         exit(1);
     }
     
@@ -304,15 +470,18 @@ int main(int argc, char **argv)
     /* 실제 입력 관리: 이중 리스트 api 사용.
      * 엔터를 쳤을 때 blist 또는 clist의 데이터를 buf[]로 저장하고,
      * 해당 리스트를 초기화한다.
-     * 
-     * bllen, cllen은 각 지정 리스트에서의 노드(입력된 char)의 수를 의미한다.
-     * 길이 확인용 변수로 실제 삽입/삭제 작업에는 쓰이지 않는다. (!= list_iterator_t *it)
      */
     list_t *blist = list_new();     // buf_list
-    int bllen = 0;                  // buf_list_len
+    list_node_t *bp;                // buf_list_pointer
+
+    list_rpush(blist, list_node_new(0));    // blist->HEAD
+    bp = blist->head;
 
     list_t *clist = list_new();     // cmd_list
-    int cllen = 0;                  // cmd_list_len
+    list_node_t *cp;                // cmd_list_pointer
+
+    list_rpush(clist, list_node_new(0));    // clist->HEAD
+    cp = clist->head;
 
     /* sendAll()의 사용 형식에 맞추기 위한 '서버 이름'.
      * sendAll()에 사용할 때는 char *sender 인자에 넣으면 됨
@@ -380,9 +549,6 @@ int main(int argc, char **argv)
     memset(message, 0, BUF_SIZE);
     memset(cmd, 0, CMD_SIZE);
 
-    // int bi = 0;     // buf string index
-    // int ci = 0;     // cmd string index
-
     ////// CLIENT INTERACTION LOOP. //////
 
     while (1)
@@ -403,8 +569,8 @@ int main(int argc, char **argv)
             int c = getch();
 
             // cmdmode 여부에 따라 다른 리스트와 버퍼 배열 사용.
-            /* message : 입력 리스트 blist, 리스트 노드 수 bllen, 버퍼 배열 buf 
-             * cmdmode : 입력 리스트 clist, 리스트 노드 수 cllen, 버퍼 배열 cmd
+            /* message : 입력 리스트 blist, 리스트 노드 수 blist->len, 버퍼 배열 buf 
+             * cmdmode : 입력 리스트 clist, 리스트 노드 수 clist->len, 버퍼 배열 cmd
              */
             switch (c)
             {
@@ -444,17 +610,86 @@ int main(int argc, char **argv)
                     break;
                 }
 
-                // 방향키까지 고려하게 되면 리스트 구조체 써야 함
-                // 뭐 나중에 쓸수도 있지만
-                // 쓰는 게 나을 수도 있겠지만.
-                // 아마도 나중엔 쓰는 게 나을 듯.
-                // 
-                // 쓸거임
-                case 17: case 18: case 19: case 20:
+                // UP ARROW [↑]
+                case 17:
                 {
-                    // UP, DOWN, RIGHT, LEFT
-                    // please don't enable the arrow keys  yet
+                    // printf("UP");
+                    break;
+                }
 
+                // DOWN ARROW [↓]
+                case 18:
+                {
+                    // printf("DOWN");
+                    break;
+                }
+
+                // LEFT ARROW [←]
+                case 20:
+                {
+                    if (cmdmode && cp != clist->head)
+                    {
+                        printf("\033[D");
+                        cp = cp->prev;
+                    }
+
+                    else if (bp != blist->head)
+                    {
+                        if (bp->val == '\n')
+                        {
+                            printf("\033[A");
+                            bp = bp->prev->prev;
+                            printUntilEndl(blist, bp, "\033[C", LIST_TAIL);
+                        }
+
+                        else {
+                            printf("\033[D");
+                            bp = bp->prev;
+                        }
+                    }
+
+                    break;
+                }
+
+                // RIGHT ARROW [→]
+                case 19:
+                {
+                    if (bp != blist->tail) {
+                        printf("\033[C");
+                        bp = bp->next;
+                    }
+                    break;
+                }
+
+                // CTRL + LEFT ARROW [←]
+                case -20:
+                {
+                    if (cmdmode)    cp = moveCursorColumnblock(clist, cp, "\b", 0, LIST_HEAD);
+                    else            bp = moveCursorColumnblock(blist, bp, "\b", 0, LIST_HEAD);
+                    break;
+                }
+
+                // CTRL + RIGHT ARROW [→]
+                case -19:
+                {
+                    if (cmdmode)    cp = moveCursorColumnblock(clist, cp, "\033[C", 0, LIST_TAIL);
+                    else            bp = moveCursorColumnblock(blist, bp, "\033[C", 0, LIST_TAIL);
+                    break;
+                }
+
+                // PRESSED CTRL + BACKSPACE
+                case 8:
+                {
+                    if (cmdmode)    cp = moveCursorColumnblock(clist, cp, "\b", 1, LIST_HEAD);
+                    else            bp = moveCursorColumnblock(blist, bp, "\b", 1, LIST_HEAD);
+                    break;
+                }
+
+                // PRESSED CTRL + DELETE
+                case -128:
+                {
+                    if (cmdmode)    moveCursorColumnblock(clist, cp, 0, 1, LIST_TAIL);
+                    else            moveCursorColumnblock(blist, bp, 0, 1, LIST_TAIL);
                     break;
                 }
 
@@ -462,67 +697,35 @@ int main(int argc, char **argv)
                 case 127:
                 {
                     // cmdmode에서는 줄넘김 안 쓰는 걸로 가정.
-                    if (cmdmode && cllen > 0)
+                    if (cmdmode && cp != clist->head)
                     {
-                        printf("\b \b");
-                        list_rpop(clist);
-                        cllen--;
+                        cp = cp->prev;
+                        list_remove(clist, cp->next);
+                        print_behind_cursor(clist, cp, '\b', 0, 0);
                     }
 
                     // default (message) mode
-                    else if (bllen > 0)
+                    else if (bp != blist->head)
                     {
-                        if (blist -> tail -> val == '\n')
+                        // 지울 문자가 줄넘김일 때
+                        if (bp->val == '\n')
                         {
-                            printf("\033[A");
-                            list_rpop(blist);
-                            list_rpop(blist);
-                            bllen -= 2;
+                            printf("\033[K\033[A");
+                            bp = bp->prev->prev;
+                            list_remove(blist, bp->next);
+                            list_remove(blist, bp->next);
 
-                            // move cursor right
-                            // iterate through list
-                            list_node_t *node = blist -> tail;
-                            while (node -> val != '\n') {
-                                printf("\033[C");
-                                if (node == blist -> head) break;
-                                node = node -> prev;
-                            }
+                            printUntilEndl(blist, bp, "\033[C", LIST_TAIL);
+                            print_behind_cursor(blist, bp, 0, 0, 0);
                         }
                         
+                        // 아닐 때 (단일 문자 삭제)
                         else
                         {
-                            printf("\b \b");
-                            list_rpop(blist);
-                            bllen--;
+                            bp = bp->prev;
+                            list_remove(blist, bp->next);
+                            print_behind_cursor(blist, bp, '\b', 0, 0);
                         }
-                    }
-                    
-                    break;
-                }
-
-                // PRESSED CTRL + BACKSPACE
-                case 8:
-                {
-                    if (cmdmode)
-                    {
-                        /* 줄넘김과 두 번째 공백 전까지 지움
-                         * 두 번째 공백: e.g. 맨 끝 글자가 공백 문자인 상태에서 CTRL + BACKSPACE를 누른 경우
-                         * 그 공백을 지움과 함께 그 다음 공백까지 지움
-                         * 
-                         * 반복문 세 개: 각각 그 첫 번째 공백까지, 공백이 없는 구간, 두 번째 공백까지의
-                         * 문자 지움 지시를 의미함
-                         */
-
-                        for (cllen; cllen > 0 && clist -> tail -> val != '\n' && clist -> tail -> val == ' '; printf("\b \b"), list_rpop(clist), cllen--);
-                        for (cllen; cllen > 0 && clist -> tail -> val != '\n' && clist -> tail -> val != ' '; printf("\b \b"), list_rpop(clist), cllen--);
-                        for (cllen; cllen > 0 && clist -> tail -> val != '\n' && clist -> tail -> val == ' '; printf("\b \b"), list_rpop(clist), cllen--);
-                    }
-
-                    else
-                    {
-                        for (bllen; bllen > 0 && blist -> tail -> val != '\n' && blist -> tail -> val == ' '; printf("\b \b"), list_rpop(blist), bllen--);
-                        for (bllen; bllen > 0 && blist -> tail -> val != '\n' && blist -> tail -> val != ' '; printf("\b \b"), list_rpop(blist), bllen--);
-                        for (bllen; bllen > 0 && blist -> tail -> val != '\n' && blist -> tail -> val == ' '; printf("\b \b"), list_rpop(blist), bllen--);
                     }
                     
                     break;
@@ -531,9 +734,36 @@ int main(int argc, char **argv)
                 // PRESSED DELETE
                 case 128:
                 {
-                    // 
-                    // 방향키 쓰면 쓸거임
-                    // 
+                    // cmdmode에서는 줄넘김 안 쓰는 걸로 가정.
+                    if (cmdmode && cp != clist->tail)
+                    {
+                        list_remove(clist, cp->next);
+                        print_behind_cursor(clist, cp, 0, 0, 0);
+                    }
+
+                    // default (message) mode
+                    else if (bp != blist->tail)
+                    {
+                        // 지울 문자가 줄넘김일 때
+                        if (bp->next->val == '\n')
+                        {
+                            // printf("\033[K\033[A");
+                            // bp = bp->next->next;
+                            list_remove(blist, bp->next);
+                            list_remove(blist, bp->next);
+
+                            // printUntilEndl(blist, bp, "\b", LIST_TAIL);
+                            print_behind_cursor(blist, bp, 0, 0, 0);
+                        }
+                        
+                        // 아닐 때 (단일 문자 삭제)
+                        else
+                        {
+                            list_remove(blist, bp->next);
+                            print_behind_cursor(blist, bp, 0, 0, 0);
+                        }
+                    }
+                    
                     break;
                 }
 
@@ -541,11 +771,11 @@ int main(int argc, char **argv)
                 case 13:
                 {
                     // 내용 없이 엔터 때린 경우는 무시
-                    if (bllen == 0) break;
+                    if (bp == blist->head && bp == blist->tail) break;
 
                     if (cmdmode)
                     {
-                        transfer_list_data(cmd, clist, &cllen, 1);
+                        cp = transfer_list_data(cmd, clist, 1);
 
                         // 
                         // DO SOMETHING WITH THE COMMAND HERE...
@@ -556,7 +786,7 @@ int main(int argc, char **argv)
 
                     else
                     {
-                        transfer_list_data(buf, blist, &bllen, 1);
+                        bp = transfer_list_data(buf, blist, 1);
 
                         // CHECK FOR EMOJIS
                         // 아래에 대한 구체적 주석은 emojis 브랜치의 check_append_emojis()에 작성할 것.
@@ -599,10 +829,13 @@ int main(int argc, char **argv)
 
                     else
                     {
+                        printUntilEndl(blist, bp, " ", LIST_HEAD);
                         printf("\r\n");
-                        list_rpush(blist, list_node_new('\r'));
-                        list_rpush(blist, list_node_new('\n'));
-                        bllen += 2;
+                        print_behind_cursor(blist, bp, 0, 0, 0);
+
+                        list_insert(blist, bp, '\n');
+                        list_insert(blist, bp, '\r');
+                        bp = bp->next->next;
                     }
 
                     break;
@@ -612,18 +845,19 @@ int main(int argc, char **argv)
                 // 타이핑 중
                 default:
                 {
-                    printf("%c", c);
+                    // ALT + 키 중 사용 지정하지 않은 키값은 무시
+                    if (c < 0) break;
 
                     if (cmdmode)
                     {
-                        list_rpush(clist, list_node_new(c));
-                        cllen++;
+                        cp = list_insert(clist, cp, c);
+                        print_behind_cursor(clist, cp, c, 0, 0);
                     }
 
                     else
                     {
-                        list_rpush(blist, list_node_new(c));
-                        bllen++;
+                        bp = list_insert(blist, bp, c);
+                        print_behind_cursor(blist, bp, c, 0, 0);
                     }
 
                     break;
