@@ -373,19 +373,22 @@ int main(int argc, char *argv[])
 
         //// 입력받은 버퍼에서 닉네임 조건 충족 여부를 먼저 확인한 후에 서버로 넘긴다.
 
-        else if (buf[0] == ' ') {
+        else if (buf[0] == ' ')
+        {
             moveCursorUp(warned ? 2 : 1, 0);
             printf("Name must not start with a SPACE character...\n");
             if (!warned) warned = 1;
         }
         
-        else if (namelen > NAME_SIZE) {
+        else if (namelen > NAME_SIZE)
+        {
             moveCursorUp(warned ? 2 : 1, 0);
             printf("Name must be shorter than %d characters!\n", NAME_SIZE);
             if (!warned) warned = 1;
         }
 
-        else {
+        else
+        {
             sprintf(message, "2000");
             sprintf(&message[CMDCODE_SIZE + 1], "%s", buf);
             
@@ -437,14 +440,17 @@ int main(int argc, char *argv[])
             // printf("No message.\r\n");
         }
         
-        else {
-            if (cmdcode == 1000 || cmdcode == 3000) {
+        else
+        {
+            if (cmdcode == 1000 || cmdcode == 3000)
+            {
                 // PRINT MSG AFTER REMOVING PREVIOUS LINES
                 if (!is_init) moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1);
                 else is_init = 0;
 
                 // CODE 1000: MESSAGE FROM SERVER
-                if (cmdcode == 1000) {
+                if (cmdcode == 1000)
+                {
                     // 이전 메시지도 서버 메시지일 경우 줄넘김 간격 하나 줄여줌
                     // 즉 클라이언트에서 서버로(그 반대도 포함) 전송자가 바뀐 경우에만 줄넘김 좀 더 넓혀 줌
                     if (cmdcode_prev == 1000) moveCursorUp(1, 0);
@@ -460,7 +466,8 @@ int main(int argc, char *argv[])
 
         // REPRINT PROMPT ONLY ON OUTPUT OCCURENCE
         // 수신 메시지 존재 or 입력 버퍼 비워짐으로 추가 출력이 존재하는 경우에만 '입력 문구' 출력.
-        if (!prompt_printed) {
+        if (!prompt_printed)
+        {
             for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n");
             printf("%s", cmdmode ? cmd_message : pp_message);
             prompt_printed = 1;
@@ -487,6 +494,11 @@ int main(int argc, char *argv[])
              */
             switch (c)
             {
+                // note: TO-DOS
+                // mulfd에서의 키 입력 방식에 맞춰 switch(c) 내부 내용
+                // 갱신해 주어야 함
+                // <...>
+
                 // PRESSED CTRL + C
                 // 99 & 037
                 case 3:
