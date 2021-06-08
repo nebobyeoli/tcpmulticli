@@ -1099,7 +1099,7 @@ int main(int argc, char **argv)
                         // moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
 
                         // SEND
-                        if (mdest[0]) sendAll(clnt_cnt, 3000, names[i], mdest, NULL);
+                        if (mdest[0]) sendAll(clnt_cnt, 3000, names[i], mdest, mdest);
                         else          sendAll(clnt_cnt, 3000, names[i], msg, NULL);
                     }
 
