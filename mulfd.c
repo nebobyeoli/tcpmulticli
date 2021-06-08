@@ -235,6 +235,36 @@ void print_behind_cursor(list_t* list, list_node_t* list_ptr, char firstchar, ch
     printf(" \033[%dD", restlen + lastcharcnt);
 }
 
+// CHECK LIST IS "LITERALLY" EMPTY
+/*
+ * 버퍼 리스트에 실제 데이터 값이 들어 있는지 확인
+ *
+ * 다음의 경우에 1 반환:
+ *   리스트가 비어 있음
+ *   리스트의 모든 노드의 val 값이 0, 공백, \r, \n 중 하나임
+ * 
+ * 리스트에 실제 의미 있는 값이 들어가 있으면 1 반환.
+ */
+int list_is_empty(list_t* list)
+{
+    if (list->head == list->tail) return 1;
+
+    list_node_t *node;
+    list_iterator_t *it = list_iterator_new(list, LIST_HEAD);
+
+    while (node = list_iterator_next(it))
+    {
+        if (node->val != 0 && node->val != ' ' && node->val != '\r' && node->val != '\n')
+        {
+            list_iterator_destroy(it);
+            return 0;
+        }
+    }
+
+    list_iterator_destroy(it);
+    return 1;
+}
+
 // LIST DATA TO BUFFER
 /* 
  * 인수들
@@ -779,8 +809,8 @@ int main(int argc, char **argv)
                 // PRESSED ENTER
                 case 13:
                 {
-                    // 내용 없이 엔터 때린 경우는 무시
-                    if (bp == blist->head && bp == blist->tail) break;
+                    // 버퍼 리스트에 유의미한 데이터가 없으면 무시
+                    if (list_is_empty(cmdmode ? clist : blist)) break;
 
                     if (cmdmode)
                     {
