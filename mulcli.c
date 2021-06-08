@@ -442,8 +442,11 @@ int main(int argc, char *argv[])
         
         else
         {
-            if (cmdcode == 1000 || cmdcode == 3000)
-            {
+            if (cmdcode == 1500) {
+                write(sock, "1500", CMDCODE_SIZE);
+            }
+
+            if (cmdcode == 1000 || cmdcode == 3000) {
                 // PRINT MSG AFTER REMOVING PREVIOUS LINES
                 if (!is_init) moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1);
                 else is_init = 0;
