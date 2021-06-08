@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <termios.h>
 #include <unistd.h>
@@ -31,6 +32,7 @@
 
 #define GETSERVMSG_TIMEOUT_SEC  0
 #define GETSERVMSG_TIMEOUT_USEC 10000   // 1000000 usec = 1 sec
+#define HEARTBEAT_INTERVAL      3       // HEARTBEAT 간격 (초 단위)
 
 #define MIN_ERASE_LINES     1           // 각 출력 사이의 줄 간격 - 앞서 출력된 '입력 문구'를 포함하여, 다음 메시지 출력 전에 지울 줄 수
 #define PP_LINE_SPACE       3           // 최솟값: 1  // 출력되는 메시지들과 '입력 문구' 사이 줄 간격
