@@ -45,7 +45,7 @@ Branch name | Pull request | Description
 
 Cmd code | Meaning
 -------- | ---------------------
-**1000** | Message from serverf
+**1000** | Message from server
 **1500** | `HEARTBEAT` interaction<br>`HB 송수신 코드를 각각 따로 분리하지 않아도 될까?`
 **2000** | Set client nickname
 **3000** | Message communication
