@@ -562,10 +562,9 @@ int main(int argc, char **argv)
     memset(cmd, 0, CMD_SIZE);
 
     ////// CLIENT INTERACTION LOOP. //////
-	//<modify>
-        time_t lasttime = time(0);
-        time_t now = time(0);
-        //</modify>
+
+    time_t lasttime = time(0);
+    time_t now = time(0);
 
     while (1)
     {
@@ -578,16 +577,31 @@ int main(int argc, char **argv)
             fflush(stdout);
         }
 
-        //<modify>
-//heartbeat get
-	if ((now = time(0)) - lasttime > HEARTBEAT_INTERVAL) {
-           lasttime = now;
-           //heartbeat shoot
-           char heart[BUF_SIZE]="heartbeat";
-           sendAll(clnt_cnt, 5959, serv_name, heart, NULL);
-	}
-	//</modify>
+        // SEND HEARTBEAT REQUEST
+        if ((now = time(0)) - lasttime > HEARTBEAT_INTERVAL)
+        {
+            lasttime = now;
+            moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1);
 
+            //// sendAll에서와 좀 별도인 작동이 있어서 별도 반복문 수행
+
+            int has_client = 0;
+
+            for (i = 0; i < clnt_cnt; i++)
+            {
+                // DISCONNECT CLIENT에서 연결 해제되면 알아서 그만 보냄
+                if (names[i][0] == 0) continue;
+
+                if (!has_client) has_client = 1;
+                write(client[i], "1500", CMDCODE_SIZE);
+                printf("\r\n>> HEARTBEAT to   [%d] (%s)", client[i], names[i]);
+            }
+
+            // 줄넘김 관리
+            if (has_client) printf("\r\n");
+
+            prompt_printed = 0;
+	    }
 
         // kbhit() 내에서 select() 돌아감, 추가적 select() 필요 없음
         // 그래서 fd_set stdinfd 지움
@@ -943,6 +957,8 @@ int main(int argc, char **argv)
                 memset(buf, 0, BUF_SIZE);
 
                 // DISCONNECT CLIENT
+                // 사실 여기서 비정상종료까지 다 체크되는 게 아닐까
+                // 어쨌든 연결 끊겼으면 read()값도 없게 되는 게 아닐까
                 if (read(client[i], buf, BUF_SIZE) <= 0)
                 {
                     moveCursorUp(MIN_ERASE_LINES, 0);
@@ -973,13 +989,26 @@ int main(int argc, char **argv)
                 {
                     int cmdcode = atoi(buf);
 
-                    moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
-                    printf("\r\nReceived from [%d] (%s): %s %s\r\n", client[i], names[i], buf, &buf[CMDCODE_SIZE + NAME_SIZE + 2]);
-                    prompt_printed = 0;
+                    if (cmdcode != 1500)
+                    {
+                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
+                        printf("\r\nReceived from [%d] (%s): %s %s\r\n", client[i], names[i], buf, &buf[CMDCODE_SIZE + NAME_SIZE + 2]);
+                    }
+
+                    //
+                    // 나중에 switch(cmdcode) 문으로 바꿀 것.
+                    //
+
+                    //// MODE : HEARTBEAT ////
+
+                    if (cmdcode == 1500)
+                    {
+                        printf("<< HEARTBEAT from [%d] (%s)\r\n", client[i], names[i]);
+                    }
 
                     //// MODE : SET NAME ////
                     
-                    if (cmdcode == 2000)
+                    else if (cmdcode == 2000)
                     {
                         // CHECK IF REQUESTED NAME IS TAKEN
                         int taken = 0;
@@ -1030,15 +1059,8 @@ int main(int argc, char **argv)
                         memset(message, 0, BUF_SIZE);
                         sendAll(clnt_cnt, 3000, names[i], index ? mdest : msg, NULL);
                     }
-//<modify>
-		    else if(cmdcode == 5959) // heartbeat shoot
-         	    {
-            		//checkpoint
-            		    char heartbeat[BUF_SIZE];
-            		    strcpy(heartbeat, &buf[CMDCODE_SIZE + NAME_SIZE + 2]);
-        		    printf("changjin is dead");
-	            }
-//</modify>
+
+                    //// FAILED TO IDENTIFY CMDCODE ////
 
                     else
                     {
@@ -1047,6 +1069,8 @@ int main(int argc, char **argv)
                 }
 
                 memset(buf, 0, BUF_SIZE);
+                
+                prompt_printed = 0;
 
                 if (--state <= 0) break;
             }

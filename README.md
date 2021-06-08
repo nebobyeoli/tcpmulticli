@@ -41,9 +41,12 @@ Branch name | Pull request | Description
 
 ## Cmd code significations
 
+#### 1000의 배수, 적어도 100의 배수로 정하는 것을 원칙으로 한다.
+
 Cmd code | Meaning
 -------- | ---------------------
-**1000** | Message from server
+**1000** | Message from serverf
+**1500** | `HEARTBEAT` interaction<br>`HB 송수신 코드를 각각 따로 분리하지 않아도 될까?`
 **2000** | Set client nickname
 **3000** | Message communication
 
