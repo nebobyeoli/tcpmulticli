@@ -502,6 +502,9 @@ int main(int argc, char **argv)
      */
     int cmdmode = 0;
 
+    // 현재 포트를 address already in use 안 띄우고 재사용할 수 있게 한다 - setsockopt(SO_REUSEADDR)
+    int on = 1;
+
     serv_sock = socket(AF_INET, SOCK_STREAM, 0);
     if (serv_sock == -1) perror_exit("socket() error");
 
@@ -514,6 +517,12 @@ int main(int argc, char **argv)
     // 239.0.100.1로 조인한다.
     join_addr.imr_multiaddr.s_addr = inet_addr(mulcast_addr);
     join_addr.imr_interface.s_addr = htonl(INADDR_ANY);
+
+    // 커널이 소켓의 포트를 점유 중인 상태에서도 서버 프로그램을 다시 구동할 수 있도록 한다
+    // 즉 서버를 닫고 다시 열었을 때, 사용했던 포트를 재사용할 수 있도록 한다.
+    setsockopt(serv_sock, SOL_SOCKET, SO_REUSEADDR, (const char *)&on, sizeof(on));
+
+    // 멀티캐스트 (char* join_addr) 주소에 가입
     setsockopt(serv_sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void*)&join_addr, sizeof(join_addr));
 
     state = bind(serv_sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
