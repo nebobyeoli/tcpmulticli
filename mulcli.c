@@ -438,6 +438,15 @@ int main(int argc, char *argv[])
         }
         
         else {
+	//<modify> code 5959 : heartbeat from server
+	     if (cmdcode == 5959) {
+        	 //printf("good1\n");
+	         //checkpoint
+        	 send_msg(5959,"heartbeat");
+	         //printf("good2\n");
+	      }
+	//</modify>
+
             if (cmdcode == 1000 || cmdcode == 3000) {
                 // PRINT MSG AFTER REMOVING PREVIOUS LINES
                 if (!is_init) moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1);
