@@ -437,7 +437,8 @@ int main(int argc, char *argv[])
             // printf("No message.\r\n");
         }
         
-        else {
+        else
+        {
             if (cmdcode == 1500) {
                 write(sock, "1500", CMDCODE_SIZE);
             }
