@@ -7,6 +7,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <time.h>
 
 #include <termios.h>
 #include <unistd.h>
@@ -31,6 +32,7 @@
 
 #define GETSERVMSG_TIMEOUT_SEC  0
 #define GETSERVMSG_TIMEOUT_USEC 10000   // 1000000 usec = 1 sec
+#define HEARTBEAT_INTERVAL      3       // HEARTBEAT 간격 (초 단위)
 
 #define MIN_ERASE_LINES     1           // 각 출력 사이의 줄 간격 - 앞서 출력된 '입력 문구'를 포함하여, 다음 메시지 출력 전에 지울 줄 수
 #define PP_LINE_SPACE       3           // 최솟값: 1  // 출력되는 메시지들과 '입력 문구' 사이 줄 간격
@@ -567,6 +569,7 @@ int main(int argc, char **argv)
     // 현재 포트를 address already in use 안 띄우고 재사용할 수 있게 한다 - setsockopt(SO_REUSEADDR)
     int on = 1;
 
+
     serv_sock = socket(AF_INET, SOCK_STREAM, 0);
     if (serv_sock == -1) perror_exit("socket() error");
 
@@ -622,6 +625,9 @@ int main(int argc, char **argv)
 
     ////// CLIENT INTERACTION LOOP. //////
 
+    time_t lasttime = time(0);
+    time_t now = time(0);
+
     while (1)
     {
         // REPRINT PROMPT ONLY ON OUTPUT OCCURENCE
@@ -632,7 +638,33 @@ int main(int argc, char **argv)
             prompt_printed = 1;
             fflush(stdout);
         }
-        
+
+        // SEND HEARTBEAT REQUEST
+        if ((now = time(0)) - lasttime > HEARTBEAT_INTERVAL)
+        {
+            lasttime = now;
+            moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1);
+
+            //// sendAll에서와 좀 별도인 작동이 있어서 별도 반복문 수행
+
+            int has_client = 0;
+
+            for (i = 0; i < clnt_cnt; i++)
+            {
+                // DISCONNECT CLIENT에서 연결 해제되면 알아서 그만 보냄
+                if (names[i][0] == 0) continue;
+
+                if (!has_client) has_client = 1;
+                write(client[i], "1500", CMDCODE_SIZE);
+                printf("\r\n>> HEARTBEAT to   [%d] (%s)", client[i], names[i]);
+            }
+
+            // 줄넘김 관리
+            if (has_client) printf("\r\n");
+
+            prompt_printed = 0;
+	    }
+
         // kbhit() 내에서 select() 돌아감, 추가적 select() 필요 없음
         // 그래서 fd_set stdinfd 지움
         if (kbhit())
@@ -976,6 +1008,8 @@ int main(int argc, char **argv)
                 memset(buf, 0, BUF_SIZE);
 
                 // DISCONNECT CLIENT
+                // 사실 여기서 비정상종료까지 다 체크되는 게 아닐까
+                // 어쨌든 연결 끊겼으면 read()값도 없게 되는 게 아닐까
                 if (read(client[i], buf, BUF_SIZE) <= 0)
                 {
                     moveCursorUp(MIN_ERASE_LINES, 0);
@@ -1006,13 +1040,26 @@ int main(int argc, char **argv)
                 {
                     int cmdcode = atoi(buf);
 
-                    moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
-                    printf("\r\nReceived from [%d] (%s): %s %s\r\n", client[i], names[i], buf, &buf[CMDCODE_SIZE + NAME_SIZE + 2]);
-                    prompt_printed = 0;
+                    if (cmdcode != 1500)
+                    {
+                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
+                        printf("\r\nReceived from [%d] (%s): %s %s\r\n", client[i], names[i], buf, &buf[CMDCODE_SIZE + NAME_SIZE + 2]);
+                    }
+
+                    //
+                    // 나중에 switch(cmdcode) 문으로 바꿀 것.
+                    //
+
+                    //// MODE : HEARTBEAT ////
+
+                    if (cmdcode == 1500)
+                    {
+                        printf("<< HEARTBEAT from [%d] (%s)\r\n", client[i], names[i]);
+                    }
 
                     //// MODE : SET NAME ////
                     
-                    if (cmdcode == 2000)
+                    else if (cmdcode == 2000)
                     {
                         // CHECK IF REQUESTED NAME IS TAKEN
                         int taken = 0;
@@ -1056,6 +1103,8 @@ int main(int argc, char **argv)
                         else          sendAll(clnt_cnt, 3000, names[i], msg, NULL);
                     }
 
+                    //// FAILED TO IDENTIFY CMDCODE ////
+
                     else
                     {
                         printf("Error reading cmdcode from [%d]!\r\n", client[i]);
@@ -1063,6 +1112,8 @@ int main(int argc, char **argv)
                 }
 
                 memset(buf, 0, BUF_SIZE);
+                
+                prompt_printed = 0;
 
                 if (--state <= 0) break;
             }
