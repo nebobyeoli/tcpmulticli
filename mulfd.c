@@ -505,6 +505,7 @@ int main(int argc, char **argv)
     // 현재 포트를 address already in use 안 띄우고 재사용할 수 있게 한다 - setsockopt(SO_REUSEADDR)
     int on = 1;
 
+
     serv_sock = socket(AF_INET, SOCK_STREAM, 0);
     if (serv_sock == -1) perror_exit("socket() error");
 
@@ -559,6 +560,10 @@ int main(int argc, char **argv)
     memset(cmd, 0, CMD_SIZE);
 
     ////// CLIENT INTERACTION LOOP. //////
+	//<modify>
+        time_t lasttime = time(0);
+        time_t now = time(0);
+        //</modify>
 
     while (1)
     {
@@ -570,7 +575,18 @@ int main(int argc, char **argv)
             prompt_printed = 1;
             fflush(stdout);
         }
-        
+
+        //<modify>
+//heartbeat get
+	if ((now = time(0)) - lasttime > HEARTBEAT_INTERVAL) {
+           lasttime = now;
+           //heartbeat shoot
+           char heart[BUF_SIZE]="heartbeat";
+           sendAll(clnt_cnt, 5959, serv_name, heart, NULL);
+	}
+	//</modify>
+
+
         // kbhit() 내에서 select() 돌아감, 추가적 select() 필요 없음
         // 그래서 fd_set stdinfd 지움
         if (kbhit())
@@ -1012,6 +1028,15 @@ int main(int argc, char **argv)
                         memset(message, 0, BUF_SIZE);
                         sendAll(clnt_cnt, 3000, names[i], index ? mdest : msg, NULL);
                     }
+//<modify>
+		    else if(cmdcode == 5959) // heartbeat shoot
+         	    {
+            		//checkpoint
+            		    char heartbeat[BUF_SIZE];
+            		    strcpy(heartbeat, &buf[CMDCODE_SIZE + NAME_SIZE + 2]);
+        		    printf("changjin is dead");
+	            }
+//</modify>
 
                     else
                     {
