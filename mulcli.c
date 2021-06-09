@@ -431,6 +431,9 @@ int main(int argc, char *argv[])
 
     while (1)
     {
+        // 서버
+        // 복사하자 -
+
         // 이전 cmdcode값 저장
         int cmdcode_prev = cmdcode;
 
