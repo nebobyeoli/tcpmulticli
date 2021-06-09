@@ -105,6 +105,27 @@ void sendAll(int clnt_cnt, int cmdcode, char *sender, char *msg, char *servlog)
     }
 }
 
+// PRINT DATA AFTER MODIFIED NODE BEHIND CURSOR
+/*
+ * 노드 추가/삭제 후 노드->next의 값들을 커서 뒤로 모두 출력
+ */
+void print_behind_cursor(list_t* list, list_node_t* list_ptr, char firstchar, char lastchar, int lastcharcnt)
+{
+    list_node_t *node = list_ptr;
+    int restlen = 1;
+
+    if (firstchar) printf("%c", firstchar);
+    while (node = node->next)
+    {
+        if (node->val == '\r') break;
+        printf("%c", node->val);
+        restlen++;
+        if (node == list->tail) break;
+    }
+    for (int i = 0; i < lastcharcnt; i++) printf("%c", lastchar);
+    printf(" \033[%dD", restlen + lastcharcnt);
+}
+
 // NOTE. this is for LINUX
 // https://stackoverflow.com/a/35190285
 /* 
@@ -276,27 +297,6 @@ void printUntilEndl(list_t* buflist, list_node_t* list_ptr, char *printstr, int 
             node = node->prev;
         }
     }
-}
-
-// PRINT DATA AFTER MODIFIED NODE BEHIND CURSOR
-/*
- * 노드 추가/삭제 후 노드->next의 값들을 커서 뒤로 모두 출력
- */
-void print_behind_cursor(list_t* list, list_node_t* list_ptr, char firstchar, char lastchar, int lastcharcnt)
-{
-    list_node_t *node = list_ptr;
-    int restlen = 1;
-
-    if (firstchar) printf("%c", firstchar);
-    while (node = node->next)
-    {
-        if (node->val == '\r') break;
-        printf("%c", node->val);
-        restlen++;
-        if (node == list->tail) break;
-    }
-    for (int i = 0; i < lastcharcnt; i++) printf("%c", lastchar);
-    printf(" \033[%dD", restlen + lastcharcnt);
 }
 
 // LIST DATA TO BUFFER
