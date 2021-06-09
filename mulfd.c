@@ -410,17 +410,17 @@ list_node_t* transfer_list_data(char *buf, list_t *list, int emptylist)
     return list->head;
 }
 
-// FUCKING JESUS CHRIST
+// INSERT VALUE IN THE MIDDLE OF A BUFFER LIST
 /* 
  * 리스트 중간에 삽입한다
  * 
- * 문자 4글자 이하, 그 4글자들 사이에
- * [alt엔터]+[backspace] 3번 이상 치고 엔터 날렸을 때
- * Segmentation fault (core dumped)
- * 토요잔류 3시간 동안 못 고쳐서 머리 터졌음
- * 수학 진도 나가야 되는데 붙잡고 있다는 게
- * 어쨌든 고침
- * (list->len)++ 해 주는 게 답이었음
+ * 버그:
+ *   문자 4글자 이하, 그 4글자들 사이에
+ *   [ALT + ENTER] & [BACKSPACE] 3번 이상 치고 넘겼을 때
+ *   Segmentation fault (core dumped) 현상 발생
+ * 
+ * 해결
+ *   (list->len)++
  * 
  * list/list.c 내 디버깅 코드:
  * void list_destroy(list_t *self)에서
@@ -428,17 +428,17 @@ list_node_t* transfer_list_data(char *buf, list_t *list, int emptylist)
  * // for core dump debugging
  * // printf("[not yet, len: %d]\r\n", len);
  * 
- * 보니까 bllen, cllen 따로 만들지 않아도 list_t* 구조체에
- * len이라는 내장 변수 있어서 그냥 그거 쓰면 되었더라
- * 
- * list->len
+ + 보니까 bllen, cllen 따로 만들지 않아도 list_t* 구조체에
+ | len이라는 내장 변수 있어서 그냥 그거 쓰면 되었음
+ V 
+ : list->len
  * 
  * not incrementing it turned out to be the f reason of the f core dumping
  * incrementing it in [if (list_ptr == list->tail)] ALSO turns out to result in core dumping
  * 'cause list->len is already incremented IN list_rpush
  * .
  * .
- * 이런 된장할.
+ * [언짢으면서도 유익한 경험이었 다]
  */
 list_node_t* list_insert(list_t* list, list_node_t* list_ptr, char newvalue)
 {
