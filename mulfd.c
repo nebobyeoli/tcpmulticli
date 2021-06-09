@@ -789,7 +789,7 @@ int main(int argc, char **argv)
 
                     else
                     {
-                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
+                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1);
                         cmdmode = 1;
                     }
 
