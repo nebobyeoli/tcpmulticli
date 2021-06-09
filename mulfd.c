@@ -130,17 +130,26 @@ void print_behind_cursor(list_t* list, list_node_t* list_ptr, char firstchar, ch
 {
     list_node_t *node = list_ptr;
     int restlen = 1;
+    int oneup = 0;
 
     if (firstchar) printf("%c", firstchar);
     while (node = node->next)
     {
-        if (node->val == '\r') break;
+        if (node->val == '\r')
+        {
+            if (list_ptr->next != node) break;
+            printf("\n");
+            oneup = 1;
+            // if (list_ptr->next == node) printf("\r\n"); continue;
+            // else break;
+        }
+        else restlen++;
         printf("%c", node->val);
-        restlen++;
         if (node == list->tail) break;
     }
     for (int i = 0; i < lastcharcnt; i++) printf("%c", lastchar);
     printf(" \033[%dD", restlen + lastcharcnt);
+    if (oneup) printf("\033[A");
 }
 
 // NOTE. this is for LINUX
@@ -456,9 +465,9 @@ list_node_t* list_insert(list_t* list, list_node_t* list_ptr, char newvalue)
 
 // https://stackoverflow.com/a/448982
 /*
- * "기존 터미널 모드" 저장 변수입니다
- * struct termios를 이용해 입력 방식을 바꿀 수 있다고 합니다!
- * 요걸로 엔터 없는, 타이핑 중에서의 직접 입력을 구현할 수 있습니다! 와!!
+ * "기존 터미널 모드" 저장 변수
+ * struct termios를 이용해 입력 방식을 바꿀 수 있다고 한다
+ * 이를 이용해 줄넘김 없이, 타이핑 중에서의 직접 입력을 구현할 수 있다    와
  */
 struct termios orig_termios;
 
@@ -1043,13 +1052,13 @@ int main(int argc, char **argv)
 
                     else
                     {
-                        printUntilEnd(blist, bp, " ", 1, LIST_HEAD);
-                        printf("\r\n");
-                        print_behind_cursor(blist, bp, 0, 0, 0);
+                        eraseInputSpace(blist, bp);
 
                         list_insert(blist, bp, '\n');
                         list_insert(blist, bp, '\r');
                         bp = bp->next->next;
+
+                        reprintList(blist, bp, 0);
                     }
 
                     break;
