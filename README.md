@@ -267,6 +267,29 @@ Command   | Description | Appearance
 ### `알아낸 거 목록`
 
 <details>
+  <summary><b>Debug logging without altering output to stdout</b></summary><br>
+
+  ```c
+  // 사용 중의 stdout 콘솔창 대신 대신 별도 외부 파일에 확인용 출력 출력
+  // 출력 형식에 변동이 가지 않아 값 확인용 디버깅 때에 편리하다.
+  FILE* fp = fopen("log.log", "a+");
+  fprintf(fp, "%d\n", lfcnt);
+  fclose(fp);
+
+  ```
+  
+  ###
+
+  ```c
+  // log.log에로의 실시간 변화 데이터는 아래와 같이 확인할 수 있다.
+  ```
+
+  ```sh
+  tail -f log.log
+  ```
+</details>
+
+<details>
   <summary><b>Cursor manipulation (go <i>up</i>) in linux</b></summary><br>
   <!-- syntax highlighting breaks on tabsize = 4, unfortunately -->
 

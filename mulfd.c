@@ -39,7 +39,7 @@
 
 #define gotoxy(x,y) printf("\033[%d;%dH", (y), (x))
 
-int curpos = 0;
+int global_curpos = 0;
 
 // 지정된 멀티캐스팅 주소
 char mulcast_addr[] = "239.0.100.1";
@@ -104,6 +104,24 @@ void sendAll(int clnt_cnt, int cmdcode, char *sender, char *msg, char *servlog)
     }
 }
 
+// GET LINEFEED COUNT OF BUFFER LIST
+/*
+ * 한 버퍼 리스트에 포함된 줄넘김의 수 구함
+ * it's always better to NOT modify the "original" source.
+ : adding list->(unsigned int lfcnt) in this case.
+ */
+int getLFcnt(list_t* list)
+{
+    list_node_t* node;
+    list_iterator_t* it = list_iterator_new(list, LIST_HEAD);
+
+    int lfcnt = 0;
+    while (node = list_iterator_next(it)) if (node->val == '\n') lfcnt++;
+    list_iterator_destroy(it);
+
+    return lfcnt;
+}
+
 // PRINT DATA AFTER MODIFIED NODE BEHIND CURSOR
 /*
  * 노드 추가/삭제 후 노드->next의 값들을 커서 뒤로 모두 출력
@@ -144,8 +162,17 @@ void print_behind_cursor(list_t* list, list_node_t* list_ptr, char firstchar, ch
  * \b       커서를 1칸 앞으로 옮긴다.
  *          goto 1 char b ack
  */
-void moveCursorUp(int lines, int eraselast)
+void moveCursorUp(int lines, int eraselast, list_node_t* list_ptr)
 {
+    // 버퍼 리스트 포인터가 인자로 주어진 경우 **위로** 지우기 전에 **밑으로** 먼저 내린다.
+    if (list_ptr)
+    {
+        list_node_t* node;
+        list_iterator_t *it = list_iterator_new_from_node(list_ptr, LIST_HEAD);
+        while (node = list_iterator_next(it)) if (node->val == '\n') printf("\033[B");
+        list_iterator_destroy(it);
+    }
+
     // eraselast가 설정된 경우, 커서를 윗줄로 올리기 전에 커서가 있던 줄을 지우고 간다.
     if (eraselast) printf("\33[2K");
 
@@ -212,15 +239,14 @@ list_node_t* moveCursorColumnblock(list_t *list, list_node_t *p, char *printstr,
 
 int getCurposFromListptr(list_t* list, list_node_t* list_ptr)
 {
+    int curpos = 0;
+
     list_node_t* node;
     list_iterator_t* it;
 
-    if (list_ptr->val == '\n') node = list_ptr->prev->prev;
-    else node = list_ptr;
+    node = list_ptr;
     
     it = list_iterator_new_from_node(node, LIST_TAIL);
-    
-    int curpos = 0;
 
     while (node = list_iterator_next(it))
     {
@@ -228,12 +254,13 @@ int getCurposFromListptr(list_t* list, list_node_t* list_ptr)
         if (node->val == '\n') break;
         curpos++;
     }
+    list_iterator_destroy(it);
     
     // list_ptr 에서 그 전 마지막 줄넘김까지의 거리
     return curpos;
 }
 
-// 줄넘김 들어간 MODIFYING 있을 때 사용:1
+// 줄넘김 들어간 MODIFYING 있을 때, 즉 !cmdmode일 때 사용.
 // 그냥 전체 다 뽑아 버린다
 void eraseInputSpace(list_t* list, list_node_t* list_ptr)
 {
@@ -249,44 +276,36 @@ void eraseInputSpace(list_t* list, list_node_t* list_ptr)
     while (node = list_iterator_next(it)) if (node->val == '\n') lfcnt++;
     list_iterator_destroy(it);
 
-    moveCursorUp(lfcnt, 1);
+    moveCursorUp(lfcnt, 1, list_ptr);
 }
 
-// dirFrom, dirTo, LIST HEAD, LIST_TAIL 사용 뒤얽히는데 일단 죄송. 정리는 나중에. 머리가 아픔. 스트레스. 실정. 도움이 안 되는 □들.
-void reprintList(list_t* list, list_node_t* list_ptr, int curpos, int dirTo)
+void reprintList(list_t* list, list_node_t* list_ptr, int curpos)
 {
-    // 뽑아.
     list_node_t *node;
-    list_iterator_t *it = list_iterator_new(list, LIST_HEAD);
+    list_iterator_t *it;
+
+    // 뽑아.
+    // 출력 끝난 후에 커서 위치: 맨 아랫줄.
+    it = list_iterator_new(list, LIST_HEAD);
     while (node = list_iterator_next(it)) printf("%c", node->val);
     list_iterator_destroy(it);
-    
-    it = list_iterator_new_from_node(list_ptr, LIST_HEAD);
 
     int lastlf = 0, ptrpos = 0;
+
+    // 커서 뒤에 줄넘김이 있을 때마다 한 줄씩 올려준다.
+    it = list_iterator_new_from_node(list_ptr, LIST_HEAD);
     while (node = list_iterator_next(it))
     {
-        if (node->val == '\n')
-        {
-            // lastlf = i;
-            printf("\033[A");
-        }
-        // if (node == list_ptr) ptrpos = i;
-        // i++;
+        if (node->val == '\n') printf("\033[A");
     }
     list_iterator_destroy(it);
 
-    // it = list_iterator_new_from_node(list_ptr, LIST_TAIL);
-    // while (node = list_iterator_next(it)) {
-    //     if (node->val == '\n') break;
-    //     // dirTo ? printf("\033[C") : printf("\033[D");
-    //     printf("\033[C");
-    // }
+    // 커서가 줄넘김한 직후, 즉 해당 줄의 맨 앞 위치일 때
+    // 위 반복문의 if (node->val == '\n')에서 한 번 더 올라간 커서를 다시 내려 준다
+    if (list_ptr->val == '\n') printf("\033[B");
+
     printf("\r");
     if (curpos) printf("\033[%dC", curpos);
-
-
-    // printf("\033[%dC", ptrpos - lastlf);
 }
 
 // PRINT UNTIL CURSOR TO END OF LINE
@@ -302,25 +321,6 @@ void reprintList(list_t* list, list_node_t* list_ptr, int curpos, int dirTo)
 void printUntilEnd(list_t* buflist, list_node_t* list_ptr, char *printstr, int modifying, int dirFrom)
 {
     list_node_t *node;
-
-    // if (modifying)
-    // {
-    //     // list_ptr부터 줄넘김 개수 세기
-    //     int lfcnt = 0;
-    //     list_iterator_t *it = list_iterator_new_from_node(list_ptr, LIST_HEAD);
-        
-    //     while (node = list_iterator_next(it))
-    //     {
-    //         if (node->val == '\n') lfcnt++;
-    //     }
-
-    //     list_iterator_destroy(it);
-
-    //     // 커서 뒷부분 다 지운다
-    //     // : 내린다 >> [지우고 올린다] 반복
-    //     printf("\033[%dB", lfcnt);
-    //     for (int i = 0; i < lfcnt; i++) printf("\33[2K\033[A");
-    // }
 
     node = list_ptr;
 
@@ -395,10 +395,9 @@ list_node_t* transfer_list_data(char *buf, list_t *list, int emptylist)
         if (node->val == 0) continue;
         sprintf(&buf[offset++], "%c", node->val);
     }
+    list_iterator_destroy(it);
 
     //// 리스트 내용 복사 완료 ////
-    
-    list_iterator_destroy(it);
 
     if (emptylist)
     {
@@ -588,6 +587,10 @@ int main(int argc, char **argv)
         exit(1);
     }
     
+    time_t inittime;    // 서버가 시작된 시각
+    time_t lasttime;    // 마지막 heartbeat 시각
+    time_t now;         // 실시간 시각 (메인 반복문에서 매 순간 갱신)
+    
     int serv_sock, clnt_sock;
     int state = 0;              // 초기 연결 때의 오류 여부, 그 이후에는 클라이언트 상태 저장 용도로써 사용
     struct ip_mreq join_addr;   // 멀티캐스트 주소 저장
@@ -697,10 +700,9 @@ int main(int argc, char **argv)
     memset(message, 0, BUF_SIZE);
     memset(cmd, 0, CMD_SIZE);
 
-    ////// CLIENT INTERACTION LOOP. //////
+    inittime = lasttime = now = time(0);
 
-    time_t lasttime = time(0);
-    time_t now = time(0);
+    ////// CLIENT INTERACTION LOOP. //////
 
     while (1)
     {
@@ -712,22 +714,29 @@ int main(int argc, char **argv)
 
             printf("%s", cmdmode ? cmd_message : pp_message);
 
-            if (cmdmode) reprintList(clist, cp, curpos, LIST_TAIL);
-            else reprintList(blist, bp, curpos, LIST_TAIL);
+            if (cmdmode) reprintList(clist, cp, global_curpos);
+            else reprintList(blist, bp, global_curpos);
 
             prompt_printed = 1;
             fflush(stdout);
         }
 
         // SEND HEARTBEAT REQUEST
-        if ((now = time(0)) - lasttime > HEARTBEAT_INTERVAL)
+        if ((now = time(0)) - lasttime >= HEARTBEAT_INTERVAL)
         {
             lasttime = now;
 
-            if (cmdmode) curpos = getCurposFromListptr(clist, cp);
-            else curpos = getCurposFromListptr(blist, bp);
+            if (cmdmode)
+            {
+                global_curpos = getCurposFromListptr(clist, cp);
+                moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
+            }
 
-            moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1);
+            else
+            {
+                global_curpos = getCurposFromListptr(blist, bp);
+                moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + getLFcnt(blist), 1, bp);
+            }
 
             //// sendAll에서와 좀 별도인 작동이 있어서 별도 반복문 수행
 
@@ -740,7 +749,7 @@ int main(int argc, char **argv)
 
                 if (!has_client) has_client = 1;
                 write(client[i], "1500", CMDCODE_SIZE);
-                printf("\r\n>> HEARTBEAT to   [%d] (%s)", client[i], names[i]);
+                printf("\r\n>> HEARTBEAT at [t: %ld] to   [%d] (%s)", (now = time(0)) - inittime, client[i], names[i]);
             }
 
             // 줄넘김 관리
@@ -758,6 +767,7 @@ int main(int argc, char **argv)
             // cmdmode 여부에 따라 다른 리스트와 버퍼 배열 사용.
             /* message : 입력 리스트 blist, 리스트 노드 수 blist->len, 버퍼 배열 buf 
              * cmdmode : 입력 리스트 clist, 리스트 노드 수 clist->len, 버퍼 배열 cmd
+             * 현재로서 cmdmode에서 줄넘김은 사용하지 않는 것으로 지정.
              */
             switch (c)
             {
@@ -769,7 +779,9 @@ int main(int argc, char **argv)
 
                     close(serv_sock);
 
-                    moveCursorUp(PP_LINE_SPACE, 0);
+                    if (cmdmode) moveCursorUp(PP_LINE_SPACE, 1, 0);
+                    else         moveCursorUp(PP_LINE_SPACE + getLFcnt(blist), 1, bp);
+
                     printf("\r\nClosed server.");
                     for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n");
 
@@ -783,13 +795,13 @@ int main(int argc, char **argv)
                     {
                         // cmdmode에서 나갈 때
                         memset(cmd, 0, CMD_SIZE);
-                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1);
+                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
                         cmdmode = 0;
                     }
 
                     else
                     {
-                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1);
+                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + getLFcnt(blist), 1, bp);
                         cmdmode = 1;
                     }
 
@@ -829,7 +841,8 @@ int main(int argc, char **argv)
                             printUntilEnd(blist, bp, "\033[C", 0, LIST_TAIL);
                         }
 
-                        else {
+                        else
+                        {
                             printf("\033[D");
                             bp = bp->prev;
                         }
@@ -907,17 +920,14 @@ int main(int argc, char **argv)
                         // 지울 문자가 줄넘김일 때
                         if (bp->val == '\n')
                         {
-                            int curpos = getCurposFromListptr(blist, bp);
+                            int curpos = getCurposFromListptr(blist, bp->prev->prev);
                             eraseInputSpace(blist, bp);
 
-                            // printUntilEnd(blist, bp, "\033[C", 1, LIST_TAIL);
-                            // printf("\33[2K\033[A");
                             bp = bp->prev->prev;
                             list_remove(blist, bp->next);
                             list_remove(blist, bp->next);
 
-                            // print_behind_cursor(blist, bp, 0, 0, 0);
-                            reprintList(blist, bp, curpos, LIST_HEAD);
+                            reprintList(blist, bp, curpos);
                         }
                         
                         // 아닐 때 (단일 문자 삭제)
@@ -951,14 +961,10 @@ int main(int argc, char **argv)
                             int curpos = getCurposFromListptr(blist, bp);
                             eraseInputSpace(blist, bp);
 
-                            // printf("\033[B\33[2K\033[A");
                             list_remove(blist, bp->next);
                             list_remove(blist, bp->next);
 
-                            // // printUntilEnd(blist, bp, "\b", 1, LIST_TAIL);
-                            // print_behind_cursor(blist, bp, 0, 0, 0);
-
-                            reprintList(blist, bp, curpos, LIST_TAIL);
+                            reprintList(blist, bp, curpos);
                         }
                         
                         // 아닐 때 (단일 문자 삭제)
@@ -991,6 +997,7 @@ int main(int argc, char **argv)
 
                     else
                     {
+                        int lfcnt = getLFcnt(blist);
                         bp = transfer_list_data(buf, blist, 1);
 
                         // CHECK FOR EMOJIS
@@ -1009,13 +1016,13 @@ int main(int argc, char **argv)
                             strcat(umdest, mdest);
                         }
 
-                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1);
+                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + lfcnt, 1, bp);
 
                         // SEND
                         if (index)  sendAll(clnt_cnt, 1000, serv_name, umdest, mdest);
                         else        sendAll(clnt_cnt, 1000, serv_name, buf, buf);
 
-                        curpos = 0;
+                        global_curpos = 0;
                         
                         prompt_printed = 0;
                         
@@ -1086,7 +1093,9 @@ int main(int argc, char **argv)
             clnt_size = sizeof(clnt_addr);
             clnt_sock = accept(serv_sock, (struct sockaddr*)&clnt_addr, &clnt_size);
             
-            moveCursorUp(MIN_ERASE_LINES, 0);
+            if (cmdmode) moveCursorUp(MIN_ERASE_LINES, 1, 0);
+            else         moveCursorUp(MIN_ERASE_LINES + getLFcnt(blist), 1, bp);
+
             printf("Connection from (%s, %d)\r\n", inet_ntoa(clnt_addr.sin_addr), ntohs(clnt_addr.sin_port));
             prompt_printed = 0;
 
@@ -1127,7 +1136,9 @@ int main(int argc, char **argv)
                 // 어쨌든 연결 끊겼으면 read()값도 없게 되는 게 아닐까
                 if (read(client[i], buf, BUF_SIZE) <= 0)
                 {
-                    moveCursorUp(MIN_ERASE_LINES, 0);
+                    if (cmdmode) moveCursorUp(MIN_ERASE_LINES, 1, 0);
+                    else         moveCursorUp(MIN_ERASE_LINES + getLFcnt(blist), 1, bp);
+
                     printf("Disconnected client [%d] (%s)\r\n", client[i], names[i]);
                     printf("===================================\r\n");
                     fflush(0);
@@ -1140,7 +1151,7 @@ int main(int argc, char **argv)
                     // 연결 해제된 클라이언트의 이름을 지워 준다
                     if (names[i][0])
                     {
-                        // SEND DISCONNECT INFORMATION TO ALL CLIENTS
+                        // SEND DISCONNECTED INFORMATION TO ALL CLIENTS
                         memset(message, 0, BUF_SIZE);
                         sprintf(message, "%s left the chat.", names[i]);
                         sendAll(clnt_cnt, 1000, serv_name, message, message);
@@ -1157,7 +1168,9 @@ int main(int argc, char **argv)
 
                     if (cmdcode != 1500)
                     {
-                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
+                        if (cmdmode) moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
+                        else         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + getLFcnt(blist), 1, bp);
+                        
                         printf("\r\nReceived from [%d] (%s): %s %s\r\n", client[i], names[i], buf, &buf[CMDCODE_SIZE + NAME_SIZE + 2]);
                     }
 
@@ -1169,7 +1182,7 @@ int main(int argc, char **argv)
 
                     if (cmdcode == 1500)
                     {
-                        printf("<< HEARTBEAT from [%d] (%s)\r\n", client[i], names[i]);
+                        printf("<< HEARTBEAT at [t: %ld] from [%d] (%s)\r\n", (now = time(0)) - inittime, client[i], names[i]);
                     }
 
                     //// MODE : SET NAME ////
