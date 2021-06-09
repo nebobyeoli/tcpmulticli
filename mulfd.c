@@ -32,7 +32,7 @@
 
 #define GETSERVMSG_TIMEOUT_SEC  0
 #define GETSERVMSG_TIMEOUT_USEC 10000   // 1000000 usec = 1 sec
-#define HEARTBEAT_INTERVAL      3       // HEARTBEAT 간격 (초 단위)
+#define HEARTBEAT_INTERVAL      300       // HEARTBEAT 간격 (초 단위)
 
 #define MIN_ERASE_LINES     1           // 각 출력 사이의 줄 간격 - 앞서 출력된 '입력 문구'를 포함하여, 다음 메시지 출력 전에 지울 줄 수
 #define PP_LINE_SPACE       3           // 최솟값: 1  // 출력되는 메시지들과 '입력 문구' 사이 줄 간격
@@ -89,7 +89,6 @@ void sendAll(int clnt_cnt, int cmdcode, char *sender, char *msg, char *servlog)
     sprintf(&message[CMDCODE_SIZE + NAME_SIZE + 2], "%s", msg);
     
     if (servlog) printf("\r\nMESSAGE FROM SERVER: %s\r\n", servlog);
-
     printf("Length of buf: %d\r\n", (int)strlen(msg));
     printf("Total msgsize: %d of %d maximum\r\n", CMDCODE_SIZE + NAME_SIZE + (int)strlen(msg), BUF_SIZE);
 
@@ -122,34 +121,37 @@ int getLFcnt(list_t* list)
     return lfcnt;
 }
 
+int getLFcnt_from_node(list_node_t* list_ptr, int dirFrom)
+{
+    list_node_t* node;
+    list_iterator_t* it = list_iterator_new_from_node(list_ptr, dirFrom);
+
+    int lfcnt = 0;
+    while (node = list_iterator_next(it)) if (node->val == '\n') lfcnt++;
+    list_iterator_destroy(it);
+
+    return lfcnt;
+}
+
 // PRINT DATA AFTER MODIFIED NODE BEHIND CURSOR
 /*
- * 노드 추가/삭제 후 노드->next의 값들을 커서 뒤로 모두 출력
+ * 노드 추가/삭제 후 [노드->next]의 값들을 커서 뒤로 모두 출력
  */
 void print_behind_cursor(list_t* list, list_node_t* list_ptr, char firstchar, char lastchar, int lastcharcnt)
 {
     list_node_t *node = list_ptr;
     int restlen = 1;
-    int oneup = 0;
 
     if (firstchar) printf("%c", firstchar);
     while (node = node->next)
     {
-        if (node->val == '\r')
-        {
-            if (list_ptr->next != node) break;
-            printf("\n");
-            oneup = 1;
-            // if (list_ptr->next == node) printf("\r\n"); continue;
-            // else break;
-        }
-        else restlen++;
+        if (node->val == '\r') break;
         printf("%c", node->val);
+        restlen++;
         if (node == list->tail) break;
     }
     for (int i = 0; i < lastcharcnt; i++) printf("%c", lastchar);
     printf(" \033[%dD", restlen + lastcharcnt);
-    if (oneup) printf("\033[A");
 }
 
 // NOTE. this is for LINUX
@@ -174,13 +176,7 @@ void print_behind_cursor(list_t* list, list_node_t* list_ptr, char firstchar, ch
 void moveCursorUp(int lines, int eraselast, list_node_t* list_ptr)
 {
     // 버퍼 리스트 포인터가 인자로 주어진 경우 **위로** 지우기 전에 **밑으로** 먼저 내린다.
-    if (list_ptr)
-    {
-        list_node_t* node;
-        list_iterator_t *it = list_iterator_new_from_node(list_ptr, LIST_HEAD);
-        while (node = list_iterator_next(it)) if (node->val == '\n') printf("\033[B");
-        list_iterator_destroy(it);
-    }
+    if (list_ptr) printf("\033[%dB", getLFcnt_from_node(list_ptr, LIST_HEAD));
 
     // eraselast가 설정된 경우, 커서를 윗줄로 올리기 전에 커서가 있던 줄을 지우고 간다.
     if (eraselast) printf("\33[2K");
@@ -208,35 +204,36 @@ void moveCursorUp(int lines, int eraselast, list_node_t* list_ptr)
  *   0: CTRL + MOVEKEY
  *   1: CTRL + ERASEKEY
  * 
- * int dirTo:
- *   리스트의 dirTo까지 확인
+ * int dirFrom:
+ *   리스트의 dirFrom의 반대까지 확인
+ *   원래 dirTo였으나 다른 리스트 사용 함수들과의 통일성을 위해 dirFrom으로 다시 뒤집음.
  *   0: LIST_HEAD
  *   1: LIST_TAIL
  * 
  * 이를 이용한 코드 구조:
- *   dirTo ? [TAIL 방향으로 확인하는 경우] : [HEAD 방향으로 확인하는 경우]
+ *   dirFrom ? [HEAD 방향으로 확인하는 경우] : [TAIL 방향으로 확인하는 경우]
  * 
- * tp != (dirTo ? list->tail : list->head):
- * 원래 list_node_t *end = (dirTo ? list->tail : list->head)로 초기조건 변수를 만들어 저장하려 했으나
+ * tp != (dirFrom ? list->head : list->tail):
+ * 원래 list_node_t *end = (dirFrom ? list->head : list->tail)로 초기조건 변수를 만들어 저장하려 했으나
  * 각 반복문이 매 바퀴를 돌 때마다 list->tail값이 변화되기 때문에
  * end가 가리킬 위치를 매번 갱신해 주지 않으면, 줄의 맨 끝에서 [CTRL + DELETE]를 눌렀을 때
  * Segmentation fault (core dumped)가 발생한다.
  */
-list_node_t* moveCursorColumnblock(list_t *list, list_node_t *p, char *printstr, int modifying, int dirTo)
+list_node_t* moveCursorColumnblock(list_t *list, list_node_t *p, char *printstr, int modifying, int dirFrom)
 {
     int i = 0;
     list_node_t *tp = p;
 
-    while (tp != (dirTo ? list->tail : list->head) && (dirTo ? tp->next->val != '\r' : tp->val != '\n') && (dirTo ? tp->next->val == ' ' : tp->val == ' '))
+    while (tp != (dirFrom ? list->head : list->tail) && (dirFrom ? tp->val != '\n' : tp->next->val != '\r') && (dirFrom ? tp->val == ' ' : tp->next->val == ' '))
     {
-        if (printstr) { printf("%s", printstr); tp = (dirTo ? tp->next : tp->prev); }
+        if (printstr) { printf("%s", printstr); tp = (dirFrom ? tp->prev : tp->next); }
         if (modifying) list_remove(list, tp->next);
         i++;
     }
 
-    while (tp != (dirTo ? list->tail : list->head) && (dirTo ? tp->next->val != '\r' : tp->val != '\n') && (dirTo ? tp->next->val != ' ' : tp->val != ' '))
+    while (tp != (dirFrom ? list->head : list->tail) && (dirFrom ? tp->val != '\n' : tp->next->val != '\r') && (dirFrom ? tp->val != ' ' : tp->next->val != ' '))
     {
-        if (printstr) { printf("%s", printstr); tp = (dirTo ? tp->next : tp->prev); }
+        if (printstr) { printf("%s", printstr); tp = (dirFrom ? tp->prev : tp->next); }
         if (modifying) list_remove(list, tp->next);
         i++;
     }
@@ -273,19 +270,8 @@ int getCurposFromListptr(list_t* list, list_node_t* list_ptr)
 // 그냥 전체 다 뽑아 버린다
 void eraseInputSpace(list_t* list, list_node_t* list_ptr)
 {
-    // 지워.
-    list_node_t *node;
-
-    list_iterator_t *it = list_iterator_new_from_node(list_ptr, LIST_HEAD);
-    while (node = list_iterator_next(it)) if (node->val == '\n') printf("\033[B");
-    list_iterator_destroy(it);
-
-    int lfcnt = 0;
-    it = list_iterator_new(list, LIST_HEAD);
-    while (node = list_iterator_next(it)) if (node->val == '\n') lfcnt++;
-    list_iterator_destroy(it);
-
-    moveCursorUp(lfcnt, 1, list_ptr);
+    printf("\033[%dB", getLFcnt_from_node(list_ptr, LIST_HEAD));
+    moveCursorUp(getLFcnt(list), 1, list_ptr);
 }
 
 void reprintList(list_t* list, list_node_t* list_ptr, int curpos)
@@ -302,12 +288,8 @@ void reprintList(list_t* list, list_node_t* list_ptr, int curpos)
     int lastlf = 0, ptrpos = 0;
 
     // 커서 뒤에 줄넘김이 있을 때마다 한 줄씩 올려준다.
-    it = list_iterator_new_from_node(list_ptr, LIST_HEAD);
-    while (node = list_iterator_next(it))
-    {
-        if (node->val == '\n') printf("\033[A");
-    }
-    list_iterator_destroy(it);
+    int lfcnt = getLFcnt_from_node(list_ptr, LIST_HEAD);
+    if (lfcnt) printf("\033[%dA", lfcnt);
 
     // 커서가 줄넘김한 직후, 즉 해당 줄의 맨 앞 위치일 때
     // 위 반복문의 if (node->val == '\n')에서 한 번 더 올라간 커서를 다시 내려 준다
@@ -727,7 +709,6 @@ int main(int argc, char **argv)
             else reprintList(blist, bp, global_curpos);
 
             prompt_printed = 1;
-            fflush(stdout);
         }
 
         // SEND HEARTBEAT REQUEST
@@ -883,32 +864,32 @@ int main(int argc, char **argv)
                 // CTRL + LEFT ARROW [←]
                 case -20:
                 {
-                    if (cmdmode)    cp = moveCursorColumnblock(clist, cp, "\b", 0, LIST_HEAD);
-                    else            bp = moveCursorColumnblock(blist, bp, "\b", 0, LIST_HEAD);
+                    if (cmdmode)    cp = moveCursorColumnblock(clist, cp, "\b", 0, LIST_TAIL);
+                    else            bp = moveCursorColumnblock(blist, bp, "\b", 0, LIST_TAIL);
                     break;
                 }
 
                 // CTRL + RIGHT ARROW [→]
                 case -19:
                 {
-                    if (cmdmode)    cp = moveCursorColumnblock(clist, cp, "\033[C", 0, LIST_TAIL);
-                    else            bp = moveCursorColumnblock(blist, bp, "\033[C", 0, LIST_TAIL);
+                    if (cmdmode)    cp = moveCursorColumnblock(clist, cp, "\033[C", 0, LIST_HEAD);
+                    else            bp = moveCursorColumnblock(blist, bp, "\033[C", 0, LIST_HEAD);
                     break;
                 }
 
                 // PRESSED CTRL + BACKSPACE
                 case 8:
                 {
-                    if (cmdmode)    cp = moveCursorColumnblock(clist, cp, "\b", 1, LIST_HEAD);
-                    else            bp = moveCursorColumnblock(blist, bp, "\b", 1, LIST_HEAD);
+                    if (cmdmode)    cp = moveCursorColumnblock(clist, cp, "\b", 1, LIST_TAIL);
+                    else            bp = moveCursorColumnblock(blist, bp, "\b", 1, LIST_TAIL);
                     break;
                 }
 
                 // PRESSED CTRL + DELETE
                 case -128:
                 {
-                    if (cmdmode)    moveCursorColumnblock(clist, cp, 0, 1, LIST_TAIL);
-                    else            moveCursorColumnblock(blist, bp, 0, 1, LIST_TAIL);
+                    if (cmdmode)    moveCursorColumnblock(clist, cp, 0, 1, LIST_HEAD);
+                    else            moveCursorColumnblock(blist, bp, 0, 1, LIST_HEAD);
                     break;
                 }
 
@@ -1007,6 +988,11 @@ int main(int argc, char **argv)
                     else
                     {
                         int lfcnt = getLFcnt(blist);
+                        printf("\033[%dB", getLFcnt_from_node(bp, LIST_HEAD));
+
+                        //
+                        // AFTER THIS THE BUFFER LIST [WILL] BE EMPTY .
+                        //
                         bp = transfer_list_data(buf, blist, 1);
 
                         // CHECK FOR EMOJIS
@@ -1052,11 +1038,14 @@ int main(int argc, char **argv)
 
                     else
                     {
-                        eraseInputSpace(blist, bp);
+                        printf("\033[%dB", getLFcnt_from_node(bp, LIST_HEAD));
+                        moveCursorUp(getLFcnt(blist), 1, 0);
 
                         list_insert(blist, bp, '\n');
                         list_insert(blist, bp, '\r');
                         bp = bp->next->next;
+
+                        global_curpos = getLFcnt(blist);
 
                         reprintList(blist, bp, 0);
                     }
@@ -1064,8 +1053,8 @@ int main(int argc, char **argv)
                     break;
                 }
                 
-                // PRESSED OTHER
-                // 타이핑 중
+                // PRESSED OTHER: IS TYPING
+                // 일반 입력 중
                 default:
                 {
                     // ALT + 키 중 사용 지정하지 않은 키값은 무시
@@ -1079,8 +1068,9 @@ int main(int argc, char **argv)
 
                     else
                     {
+                        if (bp != blist->tail && bp->next->val == '\r') printf("%c", c);
+                        else print_behind_cursor(blist, bp, c, 0, 0);
                         bp = list_insert(blist, bp, c);
-                        print_behind_cursor(blist, bp, c, 0, 0);
                     }
 
                     break;

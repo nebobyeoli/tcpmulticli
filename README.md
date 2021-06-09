@@ -369,6 +369,8 @@ Command   | Description | Appearance
 
   ```c
   // Answer 2: https://stackoverflow.com/a/26423857
+  // 주의: X에 0이 들어가도 최소 하나 출력된다.
+  // 이것 때문에 예상치 못한 곳에서 자주 당했다 .
 
   // In the linux terminal you may use terminal commands to move your cursor, such as
   printf("\033[8;5Hhello");   // Move to (8, 5) and output hello
@@ -379,6 +381,8 @@ Command   | Description | Appearance
   printf("\033[XC");  // Move right X columns;
   printf("\033[XD");  // Move left X columns;
   printf("\033[2J");  // Clear screen
+
+  // 화살표 키입력과 같이 위, 아래, 오른쪽, 왼쪽을 각각 A, B, C, D로 기억하면 편하다.
 
   ```
 </details>
