@@ -39,6 +39,8 @@
 
 #define gotoxy(x,y) printf("\033[%d;%dH", (y), (x))
 
+int curpos = 0;
+
 // 지정된 멀티캐스팅 주소
 char mulcast_addr[] = "239.0.100.1";
 
@@ -208,9 +210,32 @@ list_node_t* moveCursorColumnblock(list_t *list, list_node_t *p, char *printstr,
     return tp;
 }
 
+int getCurposFromListptr(list_t* list, list_node_t* list_ptr)
+{
+    list_node_t* node;
+    list_iterator_t* it;
+
+    if (list_ptr->val == '\n') node = list_ptr->prev->prev;
+    else node = list_ptr;
+    
+    it = list_iterator_new_from_node(node, LIST_TAIL);
+    
+    int curpos = 0;
+
+    while (node = list_iterator_next(it))
+    {
+        if (node == list->head) break;
+        if (node->val == '\n') break;
+        curpos++;
+    }
+    
+    // list_ptr 에서 그 전 마지막 줄넘김까지의 거리
+    return curpos;
+}
+
 // 줄넘김 들어간 MODIFYING 있을 때 사용:1
 // 그냥 전체 다 뽑아 버린다
-int eraseInputSpace(list_t* list, list_node_t* list_ptr)
+void eraseInputSpace(list_t* list, list_node_t* list_ptr)
 {
     // 지워.
     list_node_t *node;
@@ -225,21 +250,6 @@ int eraseInputSpace(list_t* list, list_node_t* list_ptr)
     list_iterator_destroy(it);
 
     moveCursorUp(lfcnt, 1);
-    
-    int curpos = 0;
-    node = list_ptr;
-    if (node->val == '\n') node = node->prev->prev;
-    it = list_iterator_new_from_node(node, LIST_TAIL);
-
-    while (node = list_iterator_next(it)) {
-        if (node->val == '\n') break;
-        // dirTo ? printf("\033[C") : printf("\033[D");
-        // printf("\033[C");
-        curpos++;
-    }
-    
-    // list_ptr 에서 그 전 마지막 줄넘김까지의 거리
-    return curpos;
 }
 
 // dirFrom, dirTo, LIST HEAD, LIST_TAIL 사용 뒤얽히는데 일단 죄송. 정리는 나중에. 머리가 아픔. 스트레스. 실정. 도움이 안 되는 □들.
@@ -272,7 +282,8 @@ void reprintList(list_t* list, list_node_t* list_ptr, int curpos, int dirTo)
     //     // dirTo ? printf("\033[C") : printf("\033[D");
     //     printf("\033[C");
     // }
-    printf("\r\033[%dC", curpos);
+    printf("\r");
+    if (curpos) printf("\033[%dC", curpos);
 
 
     // printf("\033[%dC", ptrpos - lastlf);
@@ -695,9 +706,15 @@ int main(int argc, char **argv)
     {
         // REPRINT PROMPT ONLY ON OUTPUT OCCURENCE
         // 수신 메시지 존재 or 입력 버퍼 비워짐으로 추가 출력이 존재하는 경우에만 '입력 문구' 출력.
-        if (!prompt_printed) {
+        if (!prompt_printed)
+        {
             for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n");
+
             printf("%s", cmdmode ? cmd_message : pp_message);
+
+            if (cmdmode) reprintList(clist, cp, curpos, LIST_TAIL);
+            else reprintList(blist, bp, curpos, LIST_TAIL);
+
             prompt_printed = 1;
             fflush(stdout);
         }
@@ -706,6 +723,10 @@ int main(int argc, char **argv)
         if ((now = time(0)) - lasttime > HEARTBEAT_INTERVAL)
         {
             lasttime = now;
+
+            if (cmdmode) curpos = getCurposFromListptr(clist, cp);
+            else curpos = getCurposFromListptr(blist, bp);
+
             moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1);
 
             //// sendAll에서와 좀 별도인 작동이 있어서 별도 반복문 수행
@@ -886,7 +907,8 @@ int main(int argc, char **argv)
                         // 지울 문자가 줄넘김일 때
                         if (bp->val == '\n')
                         {
-                            int curpos = eraseInputSpace(blist, bp);
+                            int curpos = getCurposFromListptr(blist, bp);
+                            eraseInputSpace(blist, bp);
 
                             // printUntilEnd(blist, bp, "\033[C", 1, LIST_TAIL);
                             // printf("\33[2K\033[A");
@@ -926,7 +948,8 @@ int main(int argc, char **argv)
                         // 지울 문자가 줄넘김일 때
                         if (bp->next->val == '\r')
                         {
-                            int curpos = eraseInputSpace(blist, bp);
+                            int curpos = getCurposFromListptr(blist, bp);
+                            eraseInputSpace(blist, bp);
 
                             // printf("\033[B\33[2K\033[A");
                             list_remove(blist, bp->next);
@@ -992,6 +1015,8 @@ int main(int argc, char **argv)
                         if (index)  sendAll(clnt_cnt, 1000, serv_name, umdest, mdest);
                         else        sendAll(clnt_cnt, 1000, serv_name, buf, buf);
 
+                        curpos = 0;
+                        
                         prompt_printed = 0;
                         
                         memset(buf, 0, BUF_SIZE);
