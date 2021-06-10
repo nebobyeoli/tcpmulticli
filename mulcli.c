@@ -19,7 +19,7 @@
 /* 이중 연결 리스트 api
  * https://github.com/clibs/list
  */
-#include "list.h"
+#include "list/list.h"
 
 //// 나중에 필요하다 싶으면 아래 변수들 함수들 헤더랑 따로 만들어서 담을 것
 
@@ -27,6 +27,7 @@
 #define CMDCODE_SIZE    4           // cmdcode의 크기
 #define CMD_SIZE        20          // cmdmode에서의 명령어 최대 크기
 #define NAME_SIZE       30          // 닉네임 최대 길이
+#define MAX_SOCKS       100         // 최대 연결 가능 클라이언트 수
 
 #define RECV_TIMEOUT_SEC    0
 #define RECV_TIMEOUT_USEC   50000   // 1000000 usec = 1 sec
@@ -35,6 +36,10 @@
 
 #define MIN_ERASE_LINES     1       // 각 출력 사이의 줄 간격 - 앞서 출력된 '입력 문구'를 포함하여, 다음 메시지 출력 전에 지울 줄 수
 #define PP_LINE_SPACE       3       // 최솟값: 1  // 출력되는 메시지들과 '입력 문구' 사이 줄 간격
+
+#define HEARTBEAT_CMD_CODE 1500
+#define HEARTBEAT_REQ_CODE 1501
+#define HEARTBEAT_STR_CODE 1502
 
 // 지정된 멀티캐스팅 주소
 char mulcast_addr[] = "239.0.100.1";
@@ -48,11 +53,38 @@ char pp_message[] = "Input message(CTRL+C to quit):\r\n";
 // command mode message, 즉 cmd mode에서의 입력 문구
 char cmd_message[] = "Enter command(ESC to quit):\r\n> ";
 
+struct sClient
+{
+    int logon_status; // logon 되어있으면 1, 아니면 0
+    char nick[NAME_SIZE];
+    int chat_status;          //idle = 0, personal_chat = 1, channel_chat = 2
+    int target;              //타겟 번호. 개인채팅이면 타겟 member_srl, 단체면 channel
+    int is_chatting;        // 채팅 중인지
+    time_t last_heartbeat_time; //마지막 heartbeat을 받은 시간
+} client_data[MAX_SOCKS];
+// member_srl은 client_data[i] 에서 i이다.
+
+struct HeartBeatPacket
+{
+    int cmd_code;
+    int member_srl;
+    int chat_status;
+    int target;
+    int is_chatting;
+};
+
 // 함수명 변경: error_handling() >> perror_exit()
 void perror_exit(char *message)
 {
     printf("%s", message);
     exit(0);
+}
+
+// integer to ascii
+void itoa(int i, char *st)
+{
+    sprintf(st, "%d", i);
+    return;
 }
 
 // MESSAGE SENDER
@@ -272,6 +304,95 @@ int getch()
     }
 }
 
+void heartbeatSerialize(char *message, struct HeartBeatPacket *hbp)
+{
+    char result[BUF_SIZE] = {0,};
+    memset(&result, 0, BUF_SIZE);
+
+    char tmp[5] = {0,};
+    int offset = 0;
+
+    itoa(HEARTBEAT_CMD_CODE, tmp);
+    memcpy(&result, &tmp, sizeof(int));
+    offset = sizeof(int);
+
+    itoa(hbp->member_srl, tmp);
+    memcpy(&result[offset], &tmp, sizeof(int));
+    offset += sizeof(int);
+
+    itoa(hbp->chat_status, tmp);
+    memcpy(&result[offset], &tmp, sizeof(int));
+    offset += sizeof(int);
+
+    itoa(hbp->target, tmp);
+    memcpy(&result[offset], &tmp, sizeof(int));
+    offset += sizeof(int);
+
+    itoa(hbp->is_chatting, tmp);
+    memcpy(&result[offset], &tmp, sizeof(int));
+
+    memcpy(message, &result, BUF_SIZE); // 최종 메세지 저장
+}
+
+void clientListProcess(char* msg)
+{
+    char tmp[5]={0,};
+    int offset = 0;
+
+    while(1)
+    {
+        memcpy(&tmp, &message[offset], sizeof(int));
+        offset += sizeof(int);
+        int cmd_code = atoi(tmp);
+
+        if(cmd_code == HEARTBEAT_STR_CODE) // Heartbeat가 있을 경우
+        {
+            memcpy(&tmp, &message[offset], sizeof(int));
+            offset += sizeof(int);
+            int member_srl = atoi(tmp);
+
+            memcpy(&client_data[member_srl].nick, &message[offset], sizeof(client_data[member_srl].nick));
+            offset += sizeof(client_data[member_srl].nick);
+
+            memcpy(&tmp, &message[offset], sizeof(int));
+            offset += sizeof(int);
+            client_data[member_srl].logon_status = atoi(tmp);
+
+            memcpy(&tmp, &message[offset], sizeof(int));
+            offset += sizeof(int);
+            client_data[member_srl].chat_status = atoi(tmp);
+
+            memcpy(&tmp, &message[offset], sizeof(int));
+            offset += sizeof(int);
+            client_data[member_srl].target = atoi(tmp);
+
+            memcpy(&tmp, &message[offset], sizeof(int));
+            offset += sizeof(int);
+            client_data[member_srl].is_chatting = atoi(tmp);
+        } else break;
+    }
+}
+
+
+//Modify
+void firstScene()//First Scene->메인화면 출력
+{
+	printf("============================ Welcome To Chating =======================================\r\n");
+	for (int i = 0; i < 3; i++) printf("\r\n");
+	printf("<User List>\r\n");
+	printf("- 개인채팅 사용방법 : (~~~~) 입력");
+	//유저리스트 받아서 적는부분
+
+	//
+	for (int i = 0; i < 3; i++) printf("\r\n");
+	printf("<Group chatting>\n");
+	printf("- 그룹채팅 사용방법 : c(채널번호)      ex)c12 : 12번 채널\r\n");
+	for (int i = 0; i < 3; i++) printf("\r\n");
+	printf("=======================================================================================\r\n");
+}
+
+
+
 int main(int argc, char *argv[])
 {
     if (argc != 3)
@@ -420,6 +541,13 @@ int main(int argc, char *argv[])
 
     fflush(0);
 
+	//Modify
+	firstScene(); // 메인화면 다시 띄우기
+	char k[10] = { 0, };
+	scanf("%s", k);
+	printf("Command input : %s\n", k);//디버그용 임시코드
+
+
     ////// MESSAGE COMMUNICATION LOOP //////
     
     //// 이때부터 글자 하나씩 입력받기 모드 시작.
@@ -445,9 +573,19 @@ int main(int argc, char *argv[])
         
         else
         {
-            if (cmdcode == 1500)
+            if (cmdcode == HEARTBEAT_CMD_CODE)
             {
-                write(sock, "1500", CMDCODE_SIZE);
+                struct HeartBeatPacket hbp;
+                hbp.cmd_code = HEARTBEAT_CMD_CODE;
+                hbp.member_srl = 0; // @todo 서버로부터 받아온 member_srl을 넣기
+                hbp.chat_status = 1;
+                hbp.target = 2;
+                hbp.is_chatting = 1;
+
+                char message[BUF_SIZE] = {0,};
+                heartbeatSerialize(message, &hbp);
+
+                write(sock, message, BUF_SIZE);
             }
 
             else if (cmdcode == 1000 || cmdcode == 3000)
@@ -531,6 +669,12 @@ int main(int argc, char *argv[])
                         memset(cmd, 0, CMD_SIZE);
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1);
                         cmdmode = 0;
+							
+						//Modify
+						firstScene(); // 메인화면 다시 띄우기
+						char k[10] = { 0, };
+						scanf("%s", k);
+						printf("Command input : %s\n", k);//디버그용 임시코드
                     }
 
                     else
