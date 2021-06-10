@@ -42,8 +42,6 @@
 #define HEARTBEAT_REQ_CODE 1501
 #define HEARTBEAT_STR_CODE 1502
 
-#define gotoxy(x,y) printf("\033[%d;%dH", (y), (x))
-
 int global_curpos = 0;
 
 // 지정된 멀티캐스팅 주소
