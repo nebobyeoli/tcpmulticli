@@ -390,10 +390,19 @@ int isKeyboardWriting()
 void firstScene()//First Scene->메인화면 출력
 {
     chat_status = 0; // 채팅상태 idle
+
 	printf("============================ Welcome To Chating =======================================\r\n");
 	for (int i = 0; i < 3; i++) printf("\r\n");
-	printf("<User List>\r\n");
-	printf("- 개인채팅 사용방법 : (~~~~) 입력");
+	
+    for(int i = 0; i < MAX_SOCKS; i++)
+    {
+        if(client_data[i].logon_status == 1) // 로그온 되어있는 사용자라면
+        {
+            printf("%d. %s\r\n", i, client_data[i].nick);
+        }
+    }
+
+	printf("- 개인채팅 사용방법 : 닉네임 앞 숫자 입력");
 	//유저리스트 받아서 적는부분
 
 	//
