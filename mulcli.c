@@ -36,7 +36,7 @@
 #define SEND_TIMEOUT_USEC   100000
 
 #define MIN_ERASE_LINES     1       // 각 출력 사이의 줄 간격 - 앞서 출력된 '입력 문구'를 포함하여, 다음 메시지 출력 전에 지울 줄 수
-#define PP_LINE_SPACE       300       // 최솟값: 1  // 출력되는 메시지들과 '입력 문구' 사이 줄 간격
+#define PP_LINE_SPACE       3       // 최솟값: 1  // 출력되는 메시지들과 '입력 문구' 사이 줄 간격
 
 int global_curpos = 0;
 
