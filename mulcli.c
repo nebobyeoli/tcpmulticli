@@ -675,18 +675,18 @@ void clientListProcess(char* message)
 //Modify
 void firstScene()//First Scene->메인화면 출력
 {
-	printf("============================ Welcome To Chating =======================================\r\n");
+	printf("\033[1m================ Welcome To Chatting ================\r\n");
 	for (int i = 0; i < 3; i++) printf("\r\n");
-	printf("<User List>\r\n");
-	printf("- 개인채팅 사용방법 : (~~~~) 입력");
+	printf("\033[1m<User List>\r\n\n");
+	printf("\033[0m- 개인채팅 사용방법 : (~~~~) 입력");
 	//유저리스트 받아서 적는부분
 
 	//
 	for (int i = 0; i < 3; i++) printf("\r\n");
-	printf("<Group chatting>\n");
-	printf("- 그룹채팅 사용방법 : c(채널번호)      ex)c12 : 12번 채널\r\n");
+	printf("\033[1m<Group chatting>\n\n");
+	printf("\033[0m- 그룹채팅 사용방법 : c(채널번호)      ex)c12 : 12번 채널\r\n");
 	for (int i = 0; i < 3; i++) printf("\r\n");
-	printf("=======================================================================================\r\n");
+	printf("\033[1m===================================================\r\n");
 }
 
 
