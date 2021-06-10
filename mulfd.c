@@ -1327,7 +1327,7 @@ int main(int argc, char **argv)
                         char send_message[BUF_SIZE] = {0,};
                         clientListSerialize(send_message);
 
-                        // @todo 클라이언트에게 전송 (send_message)
+                        write(client[i], send_message, BUF_SIZE);
                     }
 
                     //// MODE : SET NAME ////
