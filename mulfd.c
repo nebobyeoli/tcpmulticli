@@ -22,7 +22,7 @@
  */
 #include "list/list.h"
 
-//// 나중에 필요하다 싶으면 아래 변수들 함수들 헤더랑 따로 만들어서 담을 것
+//// 마지막에 아래 정리해서 아래 변수들 함수들 헤더랑 따로 만들어서 담을 것
 
 #define BUF_SIZE        1024 * 10    // 임시 크기(1024 * n): 수신 시작과 끝에 대한 cmdcode 추가 사용 >> MMS 수신 구현 전까지
 #define CMDCODE_SIZE    4           // cmdcode의 크기
@@ -41,8 +41,6 @@
 #define HEARTBEAT_CMD_CODE 1500
 #define HEARTBEAT_REQ_CODE 1501
 #define HEARTBEAT_STR_CODE 1502
-
-#define gotoxy(x,y) printf("\033[%d;%dH", (y), (x))
 
 int global_curpos = 0;
 
@@ -159,7 +157,7 @@ int getLFcnt_from_node(list_node_t* list_ptr, int dirFrom)
     list_iterator_t* it = list_iterator_new_from_node(list_ptr, dirFrom);
 
     int lfcnt = 0;
-    while (node = list_iterator_next(it)) if (node->val == '\n') lfcnt++;
+    while (node = list_iterator_next(it)) if (node->val != 0 && node->prev->val == '\n') lfcnt++;
     list_iterator_destroy(it);
 
     return lfcnt;
@@ -302,7 +300,13 @@ int getCurposFromListptr(list_t* list, list_node_t* list_ptr)
 // 그냥 전체 다 뽑아 버린다
 void eraseInputSpace(list_t* list, list_node_t* list_ptr)
 {
-    printf("\033[%dB", getLFcnt_from_node(list_ptr, LIST_HEAD));
+    int lfcnt = getLFcnt_from_node(list_ptr, LIST_HEAD);
+    if (lfcnt) printf("\033[%dB", lfcnt);
+
+    FILE* fp = fopen("log.log", "a+");
+    fprintf(fp, "아래: %d, 총: %d\n", lfcnt, getLFcnt(list));
+    fclose(fp);
+    
     moveCursorUp(getLFcnt(list), 1, list_ptr);
 }
 
@@ -768,7 +772,6 @@ int main(int argc, char **argv)
     // 현재 포트를 address already in use 안 띄우고 재사용할 수 있게 한다 - setsockopt(SO_REUSEADDR)
     int on = 1;
 
-
     serv_sock = socket(AF_INET, SOCK_STREAM, 0);
     if (serv_sock == -1) perror_exit("socket() error");
 
@@ -1044,10 +1047,13 @@ int main(int argc, char **argv)
                             int curpos = getCurposFromListptr(blist, bp->prev->prev);
                             eraseInputSpace(blist, bp);
 
+                            sleep(1);
+
                             bp = bp->prev->prev;
                             list_remove(blist, bp->next);
                             list_remove(blist, bp->next);
 
+                            // printf("\033[A");
                             reprintList(blist, bp, curpos);
                         }
                         
