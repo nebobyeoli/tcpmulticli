@@ -28,6 +28,7 @@
 #define CMD_SIZE        20          // cmdmode에서의 명령어 최대 크기
 #define NAME_SIZE       30          // 닉네임 최대 길이
 #define MAX_SOCKS       100         // 최대 연결 가능 클라이언트 수
+#define ACCEPT_MSG_SIZE  5        // 1 + sizeof(int)
 
 #define RECV_TIMEOUT_SEC    0
 #define RECV_TIMEOUT_USEC   50000   // 1000000 usec = 1 sec
@@ -40,6 +41,9 @@
 #define HEARTBEAT_CMD_CODE 1500
 #define HEARTBEAT_REQ_CODE 1501
 #define HEARTBEAT_STR_CODE 1502
+
+int MEMBER_SRL = -1;    // -1: 미지정
+
 
 // 지정된 멀티캐스팅 주소
 char mulcast_addr[] = "239.0.100.1";
@@ -334,7 +338,7 @@ void heartbeatSerialize(char *message, struct HeartBeatPacket *hbp)
     memcpy(message, &result, BUF_SIZE); // 최종 메세지 저장
 }
 
-void clientListProcess(char* msg)
+void clientListProcess(char* message)
 {
     char tmp[5]={0,};
     int offset = 0;
@@ -517,7 +521,7 @@ int main(int argc, char *argv[])
             write(sock, message, CMDCODE_SIZE + 1 + namelen);
 
             memset(message, 0, BUF_SIZE);
-            read(sock, message, 2);
+            read(sock, message, ACCEPT_MSG_SIZE);
 
             if (atoi(message) == 0)
             {
@@ -530,6 +534,10 @@ int main(int argc, char *argv[])
             {
                 printf("Name accepted.\n");
                 memcpy(nname, buf, NAME_SIZE);
+
+                MEMBER_SRL = atoi(&message[1]);
+                printf("\nMEMBER_SRL: %d\n", MEMBER_SRL);
+                
                 break;
             }
         }

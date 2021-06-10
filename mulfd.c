@@ -29,6 +29,7 @@
 #define CMD_SIZE        20          // cmdmode에서의 명령어 최대 크기
 #define NAME_SIZE       30          // 닉네임 최대 길이
 #define MAX_SOCKS       100         // 최대 연결 가능 클라이언트 수
+#define ACCEPT_MSG_SIZE  5        // 1 + sizeof(int)
 
 #define GETSERVMSG_TIMEOUT_SEC  0
 #define GETSERVMSG_TIMEOUT_USEC 10000   // 1000000 usec = 1 sec
@@ -1339,11 +1340,23 @@ int main(int argc, char **argv)
                         for (j = 0; !taken && j < clnt_cnt; j++)
                             if (!strcmp(&buf[CMDCODE_SIZE + 1], names[j])) taken = 1;
 
-                        if (taken) {
-                            write(client[i], "0", 2);  // REJECTED
+                        //// REJECTED
+                        if (taken)
+                        {
+                            write(client[i], "0", 12);
                         }
-                        else {
-                            write(client[i], "1", 2);  // ACCEPTED
+                        
+                        //// ACCEPTED
+                        else
+                        {
+                            //// 고유 인덱스 i 보내 드림
+
+                            char ACinfo[ACCEPT_MSG_SIZE] = { 0, };
+                            ACinfo[0] = '1';
+                            sprintf(&ACinfo[1], "%d", i);
+
+                            // 새 클라이언트에 i덱스 전달 완료
+                            write(client[i], ACinfo, ACCEPT_MSG_SIZE);
 
                             memset(names[i], 0, NAME_SIZE);
                             memset(client_data[i].nick, 0, NAME_SIZE);
