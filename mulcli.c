@@ -377,6 +377,11 @@ void clientListProcess(char* message)
     }
 }
 
+// 키보드 작성중인지 확인
+int isKeyboardWriting()
+{
+    return !list_is_empty(blist);
+}
 
 //Modify
 void firstScene()//First Scene->메인화면 출력
@@ -394,8 +399,6 @@ void firstScene()//First Scene->메인화면 출력
 	for (int i = 0; i < 3; i++) printf("\r\n");
 	printf("=======================================================================================\r\n");
 }
-
-
 
 int main(int argc, char *argv[])
 {
