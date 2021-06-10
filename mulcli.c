@@ -334,6 +334,45 @@ void heartbeatSerialize(char *message, struct HeartBeatPacket *hbp)
     memcpy(message, &result, BUF_SIZE); // 최종 메세지 저장
 }
 
+void clientListProcess(char* msg)
+{
+    char tmp[5]={0,};
+    int offset = 0;
+
+    while(1)
+    {
+        memcpy(&tmp, &message[offset], sizeof(int));
+        offset += sizeof(int);
+        int cmd_code = atoi(tmp);
+
+        if(cmd_code == HEARTBEAT_STR_CODE) // Heartbeat가 있을 경우
+        {
+            memcpy(&tmp, &message[offset], sizeof(int));
+            offset += sizeof(int);
+            int member_srl = atoi(tmp);
+
+            memcpy(&client_data[member_srl].nick, &message[offset], sizeof(client_data[member_srl].nick));
+            offset += sizeof(client_data[member_srl].nick);
+
+            memcpy(&tmp, &message[offset], sizeof(int));
+            offset += sizeof(int);
+            client_data[member_srl].logon_status = atoi(tmp);
+
+            memcpy(&tmp, &message[offset], sizeof(int));
+            offset += sizeof(int);
+            client_data[member_srl].chat_status = atoi(tmp);
+
+            memcpy(&tmp, &message[offset], sizeof(int));
+            offset += sizeof(int);
+            client_data[member_srl].target = atoi(tmp);
+
+            memcpy(&tmp, &message[offset], sizeof(int));
+            offset += sizeof(int);
+            client_data[member_srl].is_chatting = atoi(tmp);
+        } else break;
+    }
+}
+
 int main(int argc, char *argv[])
 {
     if (argc != 3)
