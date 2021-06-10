@@ -975,9 +975,10 @@ int main(int argc, char *argv[])
 							
 						//Modify
 						firstScene(); // 메인화면 다시 띄우기
-						char k[10] = { 0, };
-						scanf("%s", k);
-						printf("Command input : %s\n", k);//디버그용 임시코드
+						// char k[10] = { 0, };
+						// scanf("%s", k);
+                        // transfer_list_data(k, clist, 1);
+						// printf("Command input : %s\n", k);//디버그용 임시코드
                     }
 
                     else
@@ -1169,11 +1170,28 @@ int main(int argc, char *argv[])
                     {
                         cp = transfer_list_data(cmd, clist, 1);
 
-                        // 
+                        printf("\033[2A\rCommand: %s\033[2B", cmd);  // 입력값 출력[테스트 코드]
+                        printf("\33[2K\r> ");  // 현재 입력 줄 지움
+
                         // DO SOMETHING WITH THE COMMAND HERE...
                         // 명령어에 따른 동작 실행 e.g. 클라이언트 목록 뽑기
-                        // cmd[some_index] ...
-                        // 
+
+                        // 숫자로 시작하면
+                        if (cmd[0] > 47 && cmd[0] < 58)
+                        {
+                            // ...
+                        }
+                        
+                        // 'c'로 시작하면
+                        else if (cmd[0] == 'c')
+                        {
+                            // ...
+                        }
+
+                        else
+                        {
+                            // ...
+                        }
                     }
 
                     else
