@@ -32,10 +32,14 @@
 
 #define GETSERVMSG_TIMEOUT_SEC  0
 #define GETSERVMSG_TIMEOUT_USEC 10000   // 1000000 usec = 1 sec
-#define HEARTBEAT_INTERVAL      300       // HEARTBEAT 간격 (초 단위)
+#define HEARTBEAT_INTERVAL      3       // HEARTBEAT 간격 (초 단위)
 
 #define MIN_ERASE_LINES     1           // 각 출력 사이의 줄 간격 - 앞서 출력된 '입력 문구'를 포함하여, 다음 메시지 출력 전에 지울 줄 수
 #define PP_LINE_SPACE       3           // 최솟값: 1  // 출력되는 메시지들과 '입력 문구' 사이 줄 간격
+
+#define HEARTBEAT_CMD_CODE 1500
+#define HEARTBEAT_REQ_CODE 1501
+#define HEARTBEAT_STR_CODE 1502
 
 #define gotoxy(x,y) printf("\033[%d;%dH", (y), (x))
 
@@ -56,11 +60,38 @@ char cmd_message[] = "Enter command(ESC to quit):\r\n> ";
 // 'emoji' 문자열 임시 내장 - 파일입출력으로의 사용 전까지
 char myh[] = "⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢠⣴⣾⣿⣶⣶⣆⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀\r\n⢀⢀⢀⣀⢀⣤⢀⢀⡀⢀⣿⣿⣿⣿⣷⣿⣿⡇⢀⢀⢀⢀⣤⣀⢀⢀⢀⢀⢀\r\n⢀⢀ ⣶⢻⣧⣿⣿⠇ ⢸⣿⣿⣿⣷⣿⣿⣿⣷⢀⢀⢀⣾⡟⣿⡷⢀⢀⢀⢀\r\n⢀⢀⠈⠳⣿⣾⣿⣿⢀⠈⢿⣿⣿⣷⣿⣿⣿⣿⢀⢀⢀⣿⣿⣿⠇⢀⢀⢀⢀\r\n⢀⢀⢀⢀⢿⣿⣿⣿⣤⡶⠺⣿⣿⣿⣷⣿⣿⣿⢄⣤⣼⣿⣿⡏⢀⢀⢀⢀⢀\r\n⢀⢀⢀⢀⣼⣿⣿⣿⠟⢀⢀⠹⣿⣿⣿⣷⣿⣿⣎⠙⢿⣿⣿⣷⣤⣀⡀⢀⢀\r\n⢀⢀⢀ ⢸⣿⣿⣿⡿⢀⢀⣤⣿⣿⣿⣷⣿⣿⣿⣄⠈⢿⣿⣿⣷⣿⣿⣷⡀⢀\r\n⢀⢀⢀⣿⣿⣿⣿⣷⣀⣀⣠⣿⣿⣿⣿⣷⣿⣷⣿⣿⣷⣾⣿⣿⣿⣷⣿⣿⣿⣆\r\n⣿⣿⠛⠋⠉⠉⢻⣿⣿⣿⣿⡇⡀⠘⣿⣿⣿⣷⣿⣿⣿⠛⠻⢿⣿⣿⣿⣿⣷⣦\r\n⣿⣿⣧⡀⠿⠇⣰⣿⡟⠉⠉⢻⡆⠈⠟⠛⣿⣿⣿⣯⡉⢁⣀⣈⣉⣽⣿⣿⣿⣷\r\n⡿⠛⠛⠒⠚⠛⠉⢻⡇⠘⠃⢸⡇⢀⣤⣾⠋⢉⠻⠏⢹⠁⢤⡀⢉⡟⠉⡙⠏⣹\r\n⣿⣦⣶⣶⢀⣿⣿⣿⣷⣿⣿⣿⡇⢀⣀⣹⣶⣿⣷⠾⠿⠶⡀⠰⠾⢷⣾⣷⣶⣿\r\n⣿⣿⣿⣿⣇⣿⣿⣿⣷⣿⣿⣿⣇⣰⣿⣿⣷⣿⣿⣷⣤⣴⣶⣶⣦⣼⣿⣿⣿⣷";
 
+struct sClient
+{
+    int logon_status; // logon 되어있으면 1, 아니면 0
+    char nick[NAME_SIZE];
+    int chat_status;          //idle = 0, personal_chat = 1, channel_chat = 2
+    int target;              //타겟 번호. 개인채팅이면 타겟 member_srl, 단체면 channel
+    int is_chatting;        // 채팅 중인지
+    time_t last_heartbeat_time; //마지막 heartbeat을 받은 시간
+} client_data[MAX_SOCKS];
+// member_srl은 Client[i] 에서 i이다.
+
+struct HeartBeatPacket
+{
+    int cmd_code;
+    int member_srl;
+    int chat_status;
+    int target;
+    int is_chatting;
+};
+
 // 함수명 변경: error_handling() >> perror_exit()
 void perror_exit(char *message)
 {
     perror(message);
     exit(0);
+}
+
+// integer to ascii
+void itoa(int i, char *st)
+{
+    sprintf(st, "%d", i);
+    return;
 }
 
 // SEND TO ALL CLIENTS
@@ -569,6 +600,105 @@ int getch()
         else
             return c[0];
     }
+}
+
+void disassembleHeartBeatPacket(char *message, struct HeartBeatPacket *hbp)
+{
+    char tmp[5];
+    int offset = 0;
+
+    memcpy(&tmp, &message, sizeof(int));
+    offset = sizeof(int);
+    hbp->cmd_code = atoi(tmp);
+
+    memcpy(&tmp, &message[offset], sizeof(int));
+    offset += sizeof(int);
+    hbp->member_srl = atoi(tmp);
+
+    memcpy(&tmp, &message[offset], sizeof(int));
+    offset += sizeof(int);
+    hbp->chat_status = atoi(tmp);
+
+    memcpy(&tmp, &message[offset], sizeof(int));
+    offset += sizeof(int);
+    hbp->target = atoi(tmp);
+
+    memcpy(&tmp, &message[offset], sizeof(int));
+    offset += sizeof(int);
+    hbp->is_chatting = atoi(tmp);
+}
+
+// HeartBeat 패킷을 받았을 경우 실행
+void HeartBeatProcess(char *message)
+{
+    struct HeartBeatPacket hbp;
+    disassembleHeartBeatPacket(message, &hbp);
+
+    if(hbp.cmd_code != HEARTBEAT_CMD_CODE) return; //HeartBeat가 아니라면 끝내기
+
+    time_t curr_time; // 현재 시간
+
+    client_data[hbp.member_srl].logon_status = 1;
+    client_data[hbp.member_srl].chat_status = hbp.chat_status;
+    client_data[hbp.member_srl].target = hbp.target;
+    client_data[hbp.member_srl].is_chatting = hbp.is_chatting;
+    client_data[hbp.member_srl].last_heartbeat_time = curr_time;
+}
+
+// 해당 회원이 접속중인지 체크
+void checkLogon()
+{
+    time_t curr_time; // 현재 시간
+
+    for(int i = 0; i < MAX_SOCKS; i++)
+    {
+        if(difftime(curr_time, client_data[i].last_heartbeat_time) > 10) // 마지막 heartbeat로부터 10초 이상 지났을 경우
+        {
+            client_data[i].logon_status = 0; // 로그온 안된거로 체크
+        }
+    }
+}
+
+// 클라이언트에게 리스트 시리얼화
+void clientListSerialize(char *message)
+{
+    char result[BUF_SIZE] = {0,};
+    memset(&result, 0, BUF_SIZE);
+
+    char tmp[5] = {0,};
+    int offset = 0;
+
+    for(int i = 0; i < MAX_SOCKS; i++)
+    {
+        itoa(HEARTBEAT_STR_CODE, tmp);
+        memcpy(&result[offset], &tmp, sizeof(int));
+        offset += sizeof(int);
+
+        itoa(i, tmp); // member_srl
+        memcpy(&result[offset], &tmp, sizeof(int));
+        offset += sizeof(int);
+
+        memcpy(&result[offset], &client_data[i].nick, sizeof(client_data[i].nick));
+        offset += sizeof(client_data[i].nick);
+
+        itoa(client_data[i].logon_status, tmp);
+        memcpy(&result[offset], &tmp, sizeof(int));
+        offset += sizeof(int);
+
+        itoa(client_data[i].chat_status, tmp);
+        memcpy(&result[offset], &tmp, sizeof(int));
+        offset += sizeof(int);
+
+        itoa(client_data[i].target, tmp);
+        memcpy(&result[offset], &tmp, sizeof(int));
+        offset += sizeof(int);
+
+        itoa(client_data[i].is_chatting, tmp);
+        memcpy(&result[offset], &tmp, sizeof(int));
+        offset += sizeof(int);
+    }
+
+    memcpy(&message, &result, BUF_SIZE); // 최종 메세지 저장
 }
 
 int main(int argc, char **argv)
@@ -1163,9 +1293,12 @@ int main(int argc, char **argv)
 
                 else
                 {
-                    int cmdcode = atoi(buf);
+                    char cmd_code[5] = {0,};
+                    memcpy(&cmd_code, &buf, sizeof(int)); // 앞에서 4바이트만 받아옴
 
-                    if (cmdcode != 1500)
+                    int cmdcode = atoi(cmd_code);
+
+                    if (cmdcode != HEARTBEAT_CMD_CODE)
                     {
                         if (cmdmode) moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
                         else         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + getLFcnt(blist), 1, bp);
@@ -1179,9 +1312,22 @@ int main(int argc, char **argv)
 
                     //// MODE : HEARTBEAT ////
 
-                    if (cmdcode == 1500)
+                    if (cmdcode == HEARTBEAT_CMD_CODE)
                     {
                         printf("<< HEARTBEAT at [t: %ld] from [%d] (%s)\r\n", (now = time(0)) - inittime, client[i], names[i]);
+
+                        HeartBeatProcess(buf); // heartbeat 패킷 처리
+                    }
+
+                    //// MODE : HEARTBEAT Request from client ////
+                    if (cmdcode == HEARTBEAT_REQ_CODE)
+                    {
+                        printf("<< MemberList Requested at [t: %ld] from [%d] (%s)\r\n", (now = time(0)) - inittime, client[i], names[i]);
+
+                        char send_message[BUF_SIZE] = {0,};
+                        clientListSerialize(send_message);
+
+                        // @todo 클라이언트에게 전송 (send_message)
                     }
 
                     //// MODE : SET NAME ////
@@ -1200,6 +1346,7 @@ int main(int argc, char **argv)
                             write(client[i], "1", 2);  // ACCEPTED
 
                             memset(names[i], 0, NAME_SIZE);
+                            memset(client_data[i].nick, 0, NAME_SIZE);
                             sprintf(names[i], "%s", &buf[CMDCODE_SIZE + 1]);
                             printf("Set name of client [%d] as [%s]\r\n", client[i], names[i]);
 
@@ -1253,5 +1400,7 @@ int main(int argc, char **argv)
                 if (--state <= 0) break;
             }
         }
+
+        checkLogon(); // 로그온 상태 갱신
     }
 }
