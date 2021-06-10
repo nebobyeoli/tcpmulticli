@@ -69,7 +69,7 @@ struct sClient
     int is_chatting;        // 채팅 중인지
     time_t last_heartbeat_time; //마지막 heartbeat을 받은 시간
 } client_data[MAX_SOCKS];
-// member_srl은 Client[i] 에서 i이다.
+// member_srl은 client_data[i] 에서 i이다.
 
 struct HeartBeatPacket
 {
