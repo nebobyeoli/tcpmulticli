@@ -42,6 +42,11 @@
 #define HEARTBEAT_REQ_CODE 1501
 #define HEARTBEAT_STR_CODE 1502
 
+#define SINGLECHAT_REQ_CODE     1600
+#define SINGLECHAT_RESP_CODE    1601
+#define CHANCHAT_REQ_CODE       1602
+#define CHANCHAT_RESP_CODE      1602
+
 int global_curpos = 0;
 
 // 지정된 멀티캐스팅 주소
@@ -132,6 +137,36 @@ void sendAll(int clnt_cnt, int cmdcode, char *sender, char *msg, char *servlog)
         printf("Sent to client [%d] (%s)\r\n", client[i], names[i]);
     }
 }
+
+void send_singlechat_request(int from, int to_sock)
+{
+    char pass[CMDCODE_SIZE * 2] = { 0, };
+
+    sprintf(pass, "%d", SINGLECHAT_REQ_CODE);
+    sprintf(&pass[CMDCODE_SIZE], "%d", from);
+    write(to_sock, pass, 4 * 2);
+}
+
+void send_singlechat_response(int from, int to_sock, int accepted)
+{
+    char pass[CMDCODE_SIZE * 3] = { 0, };
+
+    sprintf(pass, "%d", SINGLECHAT_RESP_CODE);
+    sprintf(&pass[CMDCODE_SIZE], "%d", from);
+    sprintf(&pass[CMDCODE_SIZE * 2], "%d", accepted);
+    write(to_sock, pass, 4 * 3);
+}
+
+void extract_singlechat_response(char *buf, int *member_srl, int *accepted)
+{
+    char tmp[4] = { 0, };
+
+    memcpy(tmp, &buf[4 * 1], 4);
+    *member_srl = atoi(tmp);
+    memcpy(tmp, &buf[4 * 2], 4);
+    *accepted = atoi(tmp);
+}
+
 
 // GET LINEFEED COUNT OF BUFFER LIST
 /*
@@ -1327,6 +1362,7 @@ int main(int argc, char **argv)
                     }
 
                     //// MODE : HEARTBEAT Request from client ////
+
                     else if (cmdcode == HEARTBEAT_REQ_CODE)
                     {
                         printf("<< MemberList Requested at [t: %ld] from [%d] (%s)\r\n", (now = time(0)) - inittime, client[i], names[i]);
@@ -1337,7 +1373,50 @@ int main(int argc, char **argv)
                         write(client[i], send_message, BUF_SIZE);
                     }
 
-                    //// MODE : SET NAME ////
+                    //// MODE : SINGLECHAT Request from client ////
+
+                    else if (cmdcode == SINGLECHAT_REQ_CODE)
+                    {
+                        int req_to = atoi(&buf[CMDCODE_SIZE]);
+
+                        printf("Singlechat Requested from %d [%d] to %d [%d]\r\n", i, client[i], req_to, client[req_to]);
+                        
+                        if (client[req_to] == -1)
+                        {
+                            printf("%d is not an existing client.\r\n", req_to);
+                            write(client[i], "0", 2);
+                        }
+
+                        else
+                        {
+                            write(client[i], "1", 2);
+
+                            send_singlechat_request(i, client[req_to]);
+
+                            printf("Requested chat to %d [%d].\r\n", req_to, client[req_to]);
+                        }
+                    }
+
+                    //// MODE : SINGLECHAT Response from client ////
+
+                    else if (cmdcode == SINGLECHAT_RESP_CODE)
+                    {
+                        int resp_to, accepted;
+                        extract_singlechat_response(buf, &resp_to, &accepted);
+                        send_singlechat_response(i, client[resp_to], accepted);
+
+                        if (accepted)
+                        {
+                            printf("Starting private chat: %d (%s) <==> %d (%s)\r\n", resp_to, names[resp_to], i, names[i]);
+                            client_data[i].target = resp_to;
+                            client_data[resp_to].target = i;
+                        }
+
+                        else
+                        {
+                            printf("%d (%s) declined chat with %d (%s).\r\n", i, names[i], resp_to, names[resp_to]);
+                        }
+                    }
                     
                     else if (cmdcode == 2000)
                     {
@@ -1349,7 +1428,7 @@ int main(int argc, char **argv)
                         //// REJECTED
                         if (taken)
                         {
-                            write(client[i], "0", 12);
+                            write(client[i], "0", ACCEPT_MSG_SIZE);
                         }
                         
                         //// ACCEPTED
@@ -1358,7 +1437,7 @@ int main(int argc, char **argv)
                             //// 고유 인덱스 i 보내 드림
 
                             char ACinfo[ACCEPT_MSG_SIZE] = { 0, };
-                            ACinfo[0] = '1';
+                            sprintf(ACinfo, "1");
                             sprintf(&ACinfo[1], "%d", i);
 
                             // 새 클라이언트에 i덱스 전달 완료

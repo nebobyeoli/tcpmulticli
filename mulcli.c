@@ -44,6 +44,11 @@ int global_curpos = 0;
 #define HEARTBEAT_REQ_CODE 1501
 #define HEARTBEAT_STR_CODE 1502
 
+#define SINGLECHAT_REQ_CODE     1600
+#define SINGLECHAT_RESP_CODE    1601
+#define CHANCHAT_REQ_CODE       1602
+#define CHANCHAT_RESP_CODE      1602
+
 int MEMBER_SRL = -1;    // -1: 미지정
 
 /* 실제 입력 관리: 이중 리스트 api 사용.
@@ -141,6 +146,25 @@ int recv_msg(int *cmdcode, char *sender, char *message)
     sprintf(message, "%s", &buf[CMDCODE_SIZE + NAME_SIZE + 2]);
 
     return rresult;
+}
+
+void send_singlechat_request(int member_srl)
+{
+    char pass[CMDCODE_SIZE * 2] = { 0, };
+
+    sprintf(pass, "%d", SINGLECHAT_REQ_CODE);
+    sprintf(&pass[CMDCODE_SIZE], "%d", member_srl);
+    write(sock, pass, 4 * 2);
+}
+
+void send_singlechat_response(int member_srl, int accepted)
+{
+    char pass[CMDCODE_SIZE * 3] = { 0, };
+
+    sprintf(pass, "%d", SINGLECHAT_RESP_CODE);
+    sprintf(&pass[CMDCODE_SIZE], "%d", member_srl);
+    sprintf(&pass[CMDCODE_SIZE * 2], "%d", accepted);
+    write(sock, pass, 4 * 3);
 }
 
 
@@ -714,7 +738,8 @@ int main(int argc, char *argv[])
     struct sockaddr_in serv_addr;   // 서버 주소 저장
     
     struct  timeval tr;     // timeval_receive
-    fd_set  readfds;        // CONTROLS SELECT
+    fd_set  readfds;        // CONTROLS SELECT [once set: read-only]
+    fd_set  allfds;         // SELECT에 의해 변화됨
 
     /* buf[]와 message[]의 용도 규칙은 따로 없으나
      * 보통 입력 저장 및 임시 저장소는 buf[],
@@ -763,12 +788,6 @@ int main(int argc, char *argv[])
     join_addr.imr_interface.s_addr = htonl(INADDR_ANY);
     setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void*)&join_addr, sizeof(join_addr));
 
-    // SET TIMEOUT OF read()
-    // https://stackoverflow.com/a/2939145
-    // 이렇게 하면 아예 소켓 옵션으로 read()에 타임아웃을 걸 수 있어 유용하다.
-    // 바로 위 setsockopt()과는 별개임!
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tr, sizeof(tr));
-    
     if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) == -1)
         perror_exit("connect() error!");
     
@@ -848,14 +867,160 @@ int main(int argc, char *argv[])
 
     fflush(0);
 
-	//Modify
-	firstScene(); // 메인화면 다시 띄우기
-	char k[10] = { 0, };
-	scanf("%s", k);
-	printf("Command input : %s\n", k);//디버그용 임시코드
+    //// FIRST 메인 화면 출력
+
+	firstScene();
+    printf("\n\n\n%s", cmd_message);
+    fflush(stdout);
+
+    FD_ZERO(&readfds);
+    FD_SET(0, &readfds);
+    FD_SET(sock, &readfds);
+    // printf("[[%d]]\n\n\n\n", sock);
+
+    while (1)
+    {
+        allfds = readfds;
+
+        if (select(sock + 1, &allfds, 0, 0, 0))
+        {
+            if (FD_ISSET(sock, &allfds))
+            {
+                read(sock, buf, BUF_SIZE);
+
+                char cmd_code[5] = {0,};
+                memcpy(&cmd_code, &buf, sizeof(int));
+                int cmdcode = atoi(cmd_code);
+
+                if (cmdcode == SINGLECHAT_REQ_CODE)
+                {
+                    int sender = atoi(&buf[5]);
+
+                    moveCursorUp(1, 0, 0);
+                    printf("Client %d (클라정보 수신 구현 후 nick[i]에서 가져오기) requested a private chat. Accept? [y/n]:\n> ", sender);
+                    fflush(0);
+                    
+                    char c;
+                    scanf("%c", &c);
+                    if (c == 'y' || c == 'Y')
+                    {
+                        send_singlechat_response(sender, 1);
+                        
+                        client_data[MEMBER_SRL].target = sender;
+                        client_data[sender].target = MEMBER_SRL;
+                        printf("Accepted chat request. [여기까지 만듦]\n");
+
+                        // 이제 채팅할 수 있다.
+                        break;
+                    }
+                    else
+                    {
+                        send_singlechat_response(sender, 0);
+
+                        moveCursorUp(1, 0, 0);
+                        printf("Declined chat request.\n> ");
+                    }
+                }
+            }
+
+            if (FD_ISSET(0, &allfds))
+            {
+                scanf("%s", cmd);
+
+                //// 명령어에 따른 초기 동작 실행
+
+                // 숫자로 시작하면
+                if (cmd[0] > 47 && cmd[0] < 58)
+                {
+                    int req_to = atoi(cmd);
+
+                    // ignore request to SELF
+                    if (req_to == MEMBER_SRL)
+                    {
+                        moveCursorUp(2, 0, 0);
+                        printf("\033[1;33m호구짓 하지 마쇼!!\033[0m\n> ");
+                        fflush(0);
+                        continue;
+                    }
+                    
+                    send_singlechat_request(req_to);
+
+                    moveCursorUp(2, 1, 0);
+                    printf("Requested chat with client %d. Waiting for response...\n", req_to);
+
+                    char pass[4 * 3] = { 0, };
+                    read(sock, pass, 2);
+
+                    moveCursorUp(1, 1, 0);
+
+                    if (atoi(pass))  // Is existing client
+                    {
+                        printf("%d is an existing client. Waiting for response...\n", req_to);
+
+                        // 하트비트 받으면 read가 먹혀버리기 때문에
+                        char code[4];
+                        while (1)
+                        {
+                            read(sock, pass, 4 * 3);
+                            memcpy(code, pass, 4);
+                            if (atoi(code) == SINGLECHAT_RESP_CODE) break;
+                        }
+
+                        int accepted = atoi(&pass[4 * 2]);
+                        if (accepted)
+                        {
+                            moveCursorUp(1, 0, 0);
+                            printf("%d accepted the chat request. [여기까지 만듦]\n", req_to);
+                            fflush(0);
+
+                            client_data[MEMBER_SRL].target = req_to;
+                            client_data[req_to].target = MEMBER_SRL;
+
+                            // 이제 채팅할 수 있다.
+                            break;
+                        }
+                        else
+                        {
+                            moveCursorUp(1, 0, 0);
+                            printf("%d declined the chat request.\n> ", req_to);
+                            fflush(0);
+                        }
+                    }
+
+                    else
+                    {
+                        printf("%d is not an existing client.\n> ", req_to);
+                    }
+
+                    // connected = 1;
+                }
+
+                // 'c'로 시작하면
+                else if (cmd[0] == 'c')
+                {
+                    moveCursorUp(2, 1, 0);
+                    printf("아직 구현 안 됨\n> ");
+                }
+
+                else
+                {
+                    moveCursorUp(2, 1, 0);
+                    printf("'%s' is not a valid command.\n> ", cmd);
+                }
+
+                fflush(stdout);
+            }
+        }
+    }
 
 
     ////// MESSAGE COMMUNICATION LOOP //////
+    
+    // SET TIMEOUT OF read()
+    // https://stackoverflow.com/a/2939145
+    // 이렇게 하면 아예 소켓 옵션으로 read()에 타임아웃을 걸 수 있어 유용하다.
+    // 바로 위 setsockopt()과는 별개임!
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tr, sizeof(tr));
     
     //// 이때부터 글자 하나씩 입력받기 모드 시작.
     set_conio_terminal_mode();
@@ -974,13 +1139,9 @@ int main(int argc, char *argv[])
                         memset(cmd, 0, CMD_SIZE);
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
                         cmdmode = 0;
-							
+
 						//Modify
 						firstScene(); // 메인화면 다시 띄우기
-						// char k[10] = { 0, };
-						// scanf("%s", k);
-                        // transfer_list_data(k, clist, 1);
-						// printf("Command input : %s\n", k);//디버그용 임시코드
                     }
 
                     else
