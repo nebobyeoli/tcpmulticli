@@ -601,10 +601,10 @@ int main(int argc, char *argv[])
             {
                 struct HeartBeatPacket hbp;
                 hbp.cmd_code = HEARTBEAT_CMD_CODE;
-                hbp.member_srl = 0; // @todo 서버로부터 받아온 member_srl을 넣기
-                hbp.chat_status = 1;
-                hbp.target = 2;
-                hbp.is_chatting = 1;
+                hbp.member_srl = MEMBER_SRL;
+                hbp.chat_status = chat_status;
+                hbp.target = chat_target;
+                hbp.is_chatting = isKeyboardWriting();
 
                 char message[BUF_SIZE] = {0,};
                 heartbeatSerialize(message, &hbp);
