@@ -274,7 +274,8 @@ int getch()
 
 int main(int argc, char *argv[])
 {
-    if (argc != 3) {
+    if (argc != 3)
+    {
         printf("Usage : %s <IP> <PORT>\n", argv[0]);
         exit(1);
     }
@@ -397,13 +398,15 @@ int main(int argc, char *argv[])
             memset(message, 0, BUF_SIZE);
             read(sock, message, 2);
 
-            if (atoi(message) == 0) {
+            if (atoi(message) == 0)
+            {
                 moveCursorUp(warned ? 2 : 1, 0);
                 printf("Sorry, but the name %s is already taken.\n", buf);
                 if (!warned) warned = 1;
             }
             
-            else {
+            else
+            {
                 printf("Name accepted.\n");
                 memcpy(nname, buf, NAME_SIZE);
                 break;
@@ -442,11 +445,13 @@ int main(int argc, char *argv[])
         
         else
         {
-            if (cmdcode == 1500) {
+            if (cmdcode == 1500)
+            {
                 write(sock, "1500", CMDCODE_SIZE);
             }
 
-            if (cmdcode == 1000 || cmdcode == 3000) {
+            else if (cmdcode == 1000 || cmdcode == 3000)
+            {
                 // PRINT MSG AFTER REMOVING PREVIOUS LINES
                 if (!is_init) moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1);
                 else is_init = 0;
@@ -576,7 +581,8 @@ int main(int argc, char *argv[])
                             // move cursor right
                             // iterate through list
                             list_node_t *node = blist -> tail;
-                            while (node -> val != '\n') {
+                            while (node -> val != '\n')
+                            {
                                 printf("\033[C");
                                 if (node == blist -> head) break;
                                 node = node -> prev;
