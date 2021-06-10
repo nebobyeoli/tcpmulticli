@@ -51,6 +51,9 @@ char mulcast_addr[] = "239.0.100.1";
 int sock;                   // 서버 소켓
 char nname[NAME_SIZE];      // 자기 자신의 닉네임
 
+int chat_status = 0; //idle = 0, personal_chat = 1, channel_chat = 2
+int chat_target = 0; //타겟 번호. 개인채팅이면 타겟 member_srl, 단체면 channel
+
 // prompt-print message, 즉 '입력 문구'
 char pp_message[] = "Input message(CTRL+C to quit):\r\n";
 
@@ -386,6 +389,7 @@ int isKeyboardWriting()
 //Modify
 void firstScene()//First Scene->메인화면 출력
 {
+    chat_status = 0; // 채팅상태 idle
 	printf("============================ Welcome To Chating =======================================\r\n");
 	for (int i = 0; i < 3; i++) printf("\r\n");
 	printf("<User List>\r\n");
