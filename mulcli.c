@@ -373,6 +373,26 @@ void clientListProcess(char* msg)
     }
 }
 
+
+//Modify
+void firstScene()//First Scene->메인화면 출력
+{
+	printf("============================ Welcome To Chating =======================================\r\n");
+	for (int i = 0; i < 3; i++) printf("\r\n");
+	printf("<User List>\r\n");
+	printf("- 개인채팅 사용방법 : (~~~~) 입력");
+	//유저리스트 받아서 적는부분
+
+	//
+	for (int i = 0; i < 3; i++) printf("\r\n");
+	printf("<Group chatting>\n");
+	printf("- 그룹채팅 사용방법 : c(채널번호)      ex)c12 : 12번 채널\r\n");
+	for (int i = 0; i < 3; i++) printf("\r\n");
+	printf("=======================================================================================\r\n");
+}
+
+
+
 int main(int argc, char *argv[])
 {
     if (argc != 3)
@@ -521,6 +541,13 @@ int main(int argc, char *argv[])
 
     fflush(0);
 
+	//Modify
+	firstScene(); // 메인화면 다시 띄우기
+	char k[10] = { 0, };
+	scanf("%s", k);
+	printf("Command input : %s\n", k);//디버그용 임시코드
+
+
     ////// MESSAGE COMMUNICATION LOOP //////
     
     //// 이때부터 글자 하나씩 입력받기 모드 시작.
@@ -642,6 +669,12 @@ int main(int argc, char *argv[])
                         memset(cmd, 0, CMD_SIZE);
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1);
                         cmdmode = 0;
+							
+						//Modify
+						firstScene(); // 메인화면 다시 띄우기
+						char k[10] = { 0, };
+						scanf("%s", k);
+						printf("Command input : %s\n", k);//디버그용 임시코드
                     }
 
                     else
