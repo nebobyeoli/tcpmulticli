@@ -331,7 +331,7 @@ void heartbeatSerialize(char *message, struct HeartBeatPacket *hbp)
     itoa(hbp->is_chatting, tmp);
     memcpy(&result[offset], &tmp, sizeof(int));
 
-    memcpy(&message, &result, BUF_SIZE); // 최종 메세지 저장
+    memcpy(message, &result, BUF_SIZE); // 최종 메세지 저장
 }
 
 int main(int argc, char *argv[])

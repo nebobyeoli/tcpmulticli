@@ -604,7 +604,7 @@ int getch()
 
 void disassembleHeartBeatPacket(char *message, struct HeartBeatPacket *hbp)
 {
-    char tmp[5];
+    char tmp[5]={0,};
     int offset = 0;
 
     memcpy(&tmp, &message, sizeof(int));
@@ -634,8 +634,6 @@ void HeartBeatProcess(char *message)
     struct HeartBeatPacket hbp;
     disassembleHeartBeatPacket(message, &hbp);
 
-    if(hbp.cmd_code != HEARTBEAT_CMD_CODE) return; //HeartBeat가 아니라면 끝내기
-
     time_t curr_time; // 현재 시간
 
     client_data[hbp.member_srl].logon_status = 1;
@@ -643,6 +641,8 @@ void HeartBeatProcess(char *message)
     client_data[hbp.member_srl].target = hbp.target;
     client_data[hbp.member_srl].is_chatting = hbp.is_chatting;
     client_data[hbp.member_srl].last_heartbeat_time = curr_time;
+
+    printf("HEARTBEAT! CS:%d, TG:%d, CT:%d\r\n", hbp.chat_status, hbp.target, hbp.is_chatting);
 }
 
 // 해당 회원이 접속중인지 체크
@@ -1320,7 +1320,7 @@ int main(int argc, char **argv)
                     }
 
                     //// MODE : HEARTBEAT Request from client ////
-                    if (cmdcode == HEARTBEAT_REQ_CODE)
+                    else if (cmdcode == HEARTBEAT_REQ_CODE)
                     {
                         printf("<< MemberList Requested at [t: %ld] from [%d] (%s)\r\n", (now = time(0)) - inittime, client[i], names[i]);
 
