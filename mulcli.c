@@ -50,11 +50,11 @@ int MEMBER_SRL = -1;    // -1: 미지정
  * 엔터를 쳤을 때 blist 또는 clist의 데이터를 buf[]로 저장하고,
  * 해당 리스트를 초기화한다.
  */
-list_t *blist = list_new();     // buf_list
-list_node_t *bp;                // buf_list_pointer
+list_t *blist;     // buf_list
+list_node_t *bp;   // buf_list_pointer
 
-list_t *clist = list_new();     // cmd_list
-list_node_t *cp;                // cmd_list_pointer
+list_t *clist;     // cmd_list
+list_node_t *cp;   // cmd_list_pointer
 
 
 // 지정된 멀티캐스팅 주소
@@ -725,9 +725,11 @@ int main(int argc, char *argv[])
     char message[BUF_SIZE];
     char cmd[CMD_SIZE];
 
+    blist = list_new();
     list_rpush(blist, list_node_new(0));    // blist->HEAD
     bp = blist->head;
 
+    clist = list_new();
     list_rpush(clist, list_node_new(0));    // clist->HEAD
     cp = clist->head;
 
