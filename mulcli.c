@@ -841,7 +841,7 @@ int main(int argc, char *argv[])
             memset(message, 0, BUF_SIZE);
             read(sock, message, ACCEPT_MSG_SIZE);
 
-            if (atoi(message) == 0)
+            if (message[0] == '0')
             {
                 moveCursorUp(warned ? 2 : 1, 0, 0);
                 printf("Sorry, but the name %s is already taken.\n", buf);
@@ -878,6 +878,13 @@ int main(int argc, char *argv[])
     FD_SET(sock, &readfds);
     // printf("[[%d]]\n\n\n\n", sock);
 
+    int waiting_for_server = 0;
+    int waiting_for_target = 0;
+    int waiting_for_me = 0;
+
+    int req_from = -1;
+    int req_to   = -1;
+
     while (1)
     {
         allfds = readfds;
@@ -886,91 +893,72 @@ int main(int argc, char *argv[])
         {
             if (FD_ISSET(sock, &allfds))
             {
+                memset(buf, 0, BUF_SIZE);
                 read(sock, buf, BUF_SIZE);
 
                 char cmd_code[5] = {0,};
                 memcpy(&cmd_code, &buf, sizeof(int));
                 int cmdcode = atoi(cmd_code);
 
-                if (cmdcode == SINGLECHAT_REQ_CODE)
+                if (cmdcode == HEARTBEAT_CMD_CODE)
                 {
-                    int sender = atoi(&buf[5]);
+                    struct HeartBeatPacket hbp;
+                    hbp.cmd_code = HEARTBEAT_CMD_CODE;
+                    hbp.member_srl = 0; // @todo 서버로부터 받아온 member_srl을 넣기
+                    hbp.chat_status = 1;
+                    hbp.target = 2;
+                    hbp.is_chatting = 1;
 
-                    moveCursorUp(1, 0, 0);
-                    printf("Client %d (클라정보 수신 구현 후 nick[i]에서 가져오기) requested a private chat. Accept? [y/n]:\n> ", sender);
-                    fflush(0);
-                    
-                    char c;
-                    scanf("%c", &c);
-                    if (c == 'y' || c == 'Y')
-                    {
-                        send_singlechat_response(sender, 1);
-                        
-                        client_data[MEMBER_SRL].target = sender;
-                        client_data[sender].target = MEMBER_SRL;
-                        printf("Accepted chat request. [여기까지 만듦]\n");
+                    char message[BUF_SIZE] = {0,};
+                    heartbeatSerialize(message, &hbp);
 
-                        // 이제 채팅할 수 있다.
-                        break;
-                    }
-                    else
-                    {
-                        send_singlechat_response(sender, 0);
-
-                        moveCursorUp(1, 0, 0);
-                        printf("Declined chat request.\n> ");
-                    }
+                    write(sock, message, BUF_SIZE);
                 }
-            }
 
-            if (FD_ISSET(0, &allfds))
-            {
-                scanf("%s", cmd);
-
-                //// 명령어에 따른 초기 동작 실행
-
-                // 숫자로 시작하면
-                if (cmd[0] > 47 && cmd[0] < 58)
+                else if (cmdcode == SINGLECHAT_REQ_CODE)
                 {
-                    int req_to = atoi(cmd);
-
-                    // ignore request to SELF
-                    if (req_to == MEMBER_SRL)
-                    {
-                        moveCursorUp(2, 0, 0);
-                        printf("\033[1;33m호구짓 하지 마쇼!!\033[0m\n> ");
-                        fflush(0);
-                        continue;
-                    }
-                    
-                    send_singlechat_request(req_to);
-
-                    moveCursorUp(2, 1, 0);
-                    printf("Requested chat with client %d. Waiting for response...\n", req_to);
-
-                    char pass[4 * 3] = { 0, };
-                    read(sock, pass, 2);
+                    req_from = atoi(&buf[4]);
 
                     moveCursorUp(1, 1, 0);
+                    printf("Client %d (클라정보 nick[i]) requested a private chat. Accept? [y/n]:\n> ", req_from);
+                    
+                    fflush(0);
 
-                    if (atoi(pass))  // Is existing client
+                    waiting_for_me = 1;
+                }
+
+                else if (cmdcode == SINGLECHAT_RESP_CODE)
+                {
+                    if (waiting_for_server)
                     {
-                        printf("%d is an existing client. Waiting for response...\n", req_to);
+                        waiting_for_server = 0;
 
-                        // 하트비트 받으면 read가 먹혀버리기 때문에
-                        char code[4];
-                        while (1)
+                        moveCursorUp(1, 1, 0);
+
+                        if (atoi(&buf[4 * 2]))  // Is existing client
                         {
-                            read(sock, pass, 4 * 3);
-                            memcpy(code, pass, 4);
-                            if (atoi(code) == SINGLECHAT_RESP_CODE) break;
+                            printf("%d is an existing client. Waiting for response...\n", req_to);
+                            fflush(0);
+
+                            waiting_for_target = 1;
                         }
 
-                        int accepted = atoi(&pass[4 * 2]);
+                        else
+                        {
+                            printf("%d is not an existing client.\n> ", req_to);
+                            fflush(0);
+                        }
+                    }
+
+                    else if (waiting_for_target)
+                    {
+                        waiting_for_target = 0;
+
+                        int accepted = atoi(&buf[4 * 2]);
                         if (accepted)
                         {
-                            moveCursorUp(1, 0, 0);
-                            printf("%d accepted the chat request. [여기까지 만듦]\n", req_to);
+                            moveCursorUp(0, 1, 0);
+                            printf("%d (클라정보 nick[i]) accepted the chat request. [여기까지 만듦]\n", req_to);
                             fflush(0);
 
                             client_data[MEMBER_SRL].target = req_to;
@@ -979,36 +967,101 @@ int main(int argc, char *argv[])
                             // 이제 채팅할 수 있다.
                             break;
                         }
+
                         else
                         {
-                            moveCursorUp(1, 0, 0);
-                            printf("%d declined the chat request.\n> ", req_to);
+                            moveCursorUp(1, 1, 0);
+                            printf("%d (클라정보 nick[i]) declined the chat request.\n> ", req_to);
                             fflush(0);
                         }
+                    }
+                }
+            }
+
+            if (FD_ISSET(0, &allfds))
+            {
+                memset(cmd, 0, sizeof(cmd));
+                fgets(cmd, sizeof(cmd), stdin);
+                cmd[strlen(cmd) - 1] = 0;   // 마지막 줄넘김 제거
+
+                if (waiting_for_me)
+                {
+                    waiting_for_me = 0;
+
+                    if (cmd[0] == 'y' || cmd[0] == 'Y')
+                    {
+                        moveCursorUp(1, 1, 0);
+
+                        send_singlechat_response(req_from, 1);
+                        
+                        client_data[MEMBER_SRL].target = req_from;
+                        client_data[req_from].target = MEMBER_SRL;
+                        printf("Accepted chat request. [여기까지 만듦]\n");
+
+                        // 이제 채팅할 수 있다.
+                        break;
+                    }
+                    else
+                    {
+                        moveCursorUp(2, 1, 0);
+
+                        send_singlechat_response(req_from, 0);
+
+                        printf("Declined chat request.\n> ");
+                    }
+
+                    fflush(stdout);
+                }
+
+                else if (!waiting_for_target)
+                {
+                    //// 명령어에 따른 초기 동작 실행
+
+                    // 숫자로 시작하면
+                    if (cmd[0] > 47 && cmd[0] < 58)
+                    {
+                        if (strlen(cmd) > 2)
+                        {
+                            moveCursorUp(2, 0, 0);
+                            printf("\033[1;33mNi de \033[4;7mCRAZY\033[0;1;33m ma?\033[0m\n> ");
+                            fflush(0);
+                            continue;
+                        }
+
+                        req_to = atoi(cmd);
+
+                        // ignore request to SELF
+                        if (req_to == MEMBER_SRL)
+                        {
+                            moveCursorUp(2, 0, 0);
+                            printf("\033[1;33m호구짓 하지 마쇼!!\033[0m\n> ");
+                            fflush(0);
+                            continue;
+                        }
+                        
+                        send_singlechat_request(req_to);
+
+                        moveCursorUp(2, 1, 0);
+                        printf("Requested chat with client %d. Waiting for response...\n", req_to);
+
+                        waiting_for_server = 1;
+                    }
+
+                    // 'c'로 시작하면
+                    else if (cmd[0] == 'c')
+                    {
+                        moveCursorUp(2, 1, 0);
+                        printf("아직 구현 안 됨\n> ");
                     }
 
                     else
                     {
-                        printf("%d is not an existing client.\n> ", req_to);
+                        moveCursorUp(2, 1, 0);
+                        printf("'%s' is not a valid command.\n> ", cmd);
                     }
 
-                    // connected = 1;
+                    fflush(stdout);
                 }
-
-                // 'c'로 시작하면
-                else if (cmd[0] == 'c')
-                {
-                    moveCursorUp(2, 1, 0);
-                    printf("아직 구현 안 됨\n> ");
-                }
-
-                else
-                {
-                    moveCursorUp(2, 1, 0);
-                    printf("'%s' is not a valid command.\n> ", cmd);
-                }
-
-                fflush(stdout);
             }
         }
     }

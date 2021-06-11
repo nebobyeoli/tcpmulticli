@@ -908,7 +908,7 @@ int main(int argc, char **argv)
 
                 if (!has_client) has_client = 1;
                 write(client[i], "1500", CMDCODE_SIZE);
-                printf("\r\n>> HEARTBEAT at [t: %ld] to   [%d] (%s)", (now = time(0)) - inittime, client[i], names[i]);
+                printf("\r\n>> HEARTBEAT at [t: %ld] to   %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
             }
 
             // 줄넘김 관리
@@ -1274,7 +1274,7 @@ int main(int argc, char **argv)
             {
                 if (client[i] < 0) {
                     client[i] = clnt_sock;
-                    printf("Client number: %d\r\n", i + 1);
+                    printf("Client index: %d\r\n", i);
                     printf("Client FD: %d\r\n", clnt_sock);
                     break;
                 }
@@ -1356,7 +1356,7 @@ int main(int argc, char **argv)
 
                     if (cmdcode == HEARTBEAT_CMD_CODE)
                     {
-                        printf("<< HEARTBEAT at [t: %ld] from [%d] (%s)\r\n", (now = time(0)) - inittime, client[i], names[i]);
+                        printf("\033[A<< HEARTBEAT at [t: %ld] from %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
 
                         HeartBeatProcess(buf); // heartbeat 패킷 처리
                     }
@@ -1365,7 +1365,7 @@ int main(int argc, char **argv)
 
                     else if (cmdcode == HEARTBEAT_REQ_CODE)
                     {
-                        printf("<< MemberList Requested at [t: %ld] from [%d] (%s)\r\n", (now = time(0)) - inittime, client[i], names[i]);
+                        printf("<< MemberList Requested at [t: %ld] from %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
 
                         char send_message[BUF_SIZE] = {0,};
                         clientListSerialize(send_message);
@@ -1384,15 +1384,13 @@ int main(int argc, char **argv)
                         if (client[req_to] == -1)
                         {
                             printf("%d is not an existing client.\r\n", req_to);
-                            write(client[i], "0", 2);
+                            send_singlechat_response(serv_sock, client[i], 0);
                         }
 
                         else
                         {
-                            write(client[i], "1", 2);
-
+                            send_singlechat_response(serv_sock, client[i], 1);
                             send_singlechat_request(i, client[req_to]);
-
                             printf("Requested chat to %d [%d].\r\n", req_to, client[req_to]);
                         }
                     }
