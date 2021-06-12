@@ -338,9 +338,7 @@ void check_append_emojis(char *msg, char *mdest)
 
         // strstr는 문자열 내 문자열이 있는지 확인하고
         // 있으면 그 sub 문자열이 등장하는 시작 메모리 위치를, 없으면 NULL(= 0)을 반환한다.
-        index = strstr(swap ? mdest : message, TOKEN);
-        
-        if (index)
+        while (index = strstr(swap ? mdest : message, TOKEN))
         {
             if (first) { for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n"); first = 0; }
 
