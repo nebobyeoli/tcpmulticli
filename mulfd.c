@@ -347,10 +347,6 @@ void eraseInputSpace(list_t* list, list_node_t* list_ptr)
     int lfcnt = getLFcnt_from_node(list_ptr, LIST_HEAD);
     if (lfcnt) printf("\033[%dB", lfcnt);
 
-    FILE* fp = fopen("log.log", "a+");
-    fprintf(fp, "아래: %d, 총: %d\n", lfcnt, getLFcnt(list));
-    fclose(fp);
-    
     moveCursorUp(getLFcnt(list), 1, list_ptr);
 }
 
