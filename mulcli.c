@@ -811,7 +811,7 @@ int main(int argc, char *argv[])
     char sender[NAME_SIZE];
 
     sock = socket(PF_INET, SOCK_STREAM, 0);   
-    if (sock == -1) perror_exit("socket() error!");
+    if (sock == -1) perror_exit("socket() error!\n");
     
     memset(&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
@@ -828,9 +828,9 @@ int main(int argc, char *argv[])
     setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void*)&join_addr, sizeof(join_addr));
 
     if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) == -1)
-        perror_exit("connect() error!");
+        perror_exit("connect() error!\n");
     
-    printf("CONNECTED TO SERVER.\n\n");
+    printf("\033[1;4;33m\nCONNECTED TO SERVER.\033[0m\n\n");
 
     /* prompt_printed와 비슷한 역할인데,
      * 입력 조건 메시지가 처음 출력되는 때와 그 다음부터 출력되는 때를 구분짓는다.

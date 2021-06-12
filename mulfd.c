@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <dirent.h>
 
 #include <termios.h>
 #include <unistd.h>
@@ -25,7 +26,7 @@
 //// 마지막에 아래 정리해서 아래 변수들 함수들 헤더랑 따로 만들어서 담을 것
 
 #define BUF_SIZE        1024 * 4    // 임시 크기(1024 * n): 수신 시작과 끝에 대한 cmdcode 추가 사용 >> MMS 수신 구현 전까지
-#define MSG_SIZE        2000
+#define MSG_SIZE        4000
 #define CMDCODE_SIZE    4           // cmdcode의 크기
 #define CMD_SIZE        20          // cmdmode에서의 명령어 최대 크기
 #define NAME_SIZE       30          // 닉네임 최대 길이
@@ -55,6 +56,8 @@
 #define OPENCHAT_CMD_CODE       3000
 #define SINGLECHAT_CMD_CODE     3001
 
+#define EMOJI_VARIANT_MAX   30      // 최대 사용 가능 이모티콘 (txt) 수
+#define EMOJI_TITLELEN_MAX  10      // 이모티콘(명령명) 최대 길이
 
 int global_curpos = 0;
 
@@ -70,11 +73,13 @@ char pp_message[] = "Input message(CTRL+C to quit):\r\n";
 // command mode message, 즉 cmd mode에서의 입력 문구
 char cmd_message[] = "Enter command(ESC to quit):\r\n> ";
 
-// 'emoji' 문자열들 임시 내장 - 파일입출력으로의 사용 전까지
+int emojiCnt = 0;
 
-char myh[] = "⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢠⣴⣾⣿⣶⣶⣆⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀\r\n⢀⢀⢀⣀⢀⣤⢀⢀⡀⢀⣿⣿⣿⣿⣷⣿⣿⡇⢀⢀⢀⢀⣤⣀⢀⢀⢀⢀⢀\r\n⢀⢀ ⣶⢻⣧⣿⣿⠇ ⢸⣿⣿⣿⣷⣿⣿⣿⣷⢀⢀⢀⣾⡟⣿⡷⢀⢀⢀⢀\r\n⢀⢀⠈⠳⣿⣾⣿⣿⢀⠈⢿⣿⣿⣷⣿⣿⣿⣿⢀⢀⢀⣿⣿⣿⠇⢀⢀⢀⢀\r\n⢀⢀⢀⢀⢿⣿⣿⣿⣤⡶⠺⣿⣿⣿⣷⣿⣿⣿⢄⣤⣼⣿⣿⡏⢀⢀⢀⢀⢀\r\n⢀⢀⢀⢀⣼⣿⣿⣿⠟⢀⢀⠹⣿⣿⣿⣷⣿⣿⣎⠙⢿⣿⣿⣷⣤⣀⡀⢀⢀\r\n⢀⢀⢀ ⢸⣿⣿⣿⡿⢀⢀⣤⣿⣿⣿⣷⣿⣿⣿⣄⠈⢿⣿⣿⣷⣿⣿⣷⡀⢀\r\n⢀⢀⢀⣿⣿⣿⣿⣷⣀⣀⣠⣿⣿⣿⣿⣷⣿⣷⣿⣿⣷⣾⣿⣿⣿⣷⣿⣿⣿⣆\r\n⣿⣿⠛⠋⠉⠉⢻⣿⣿⣿⣿⡇⡀⠘⣿⣿⣿⣷⣿⣿⣿⠛⠻⢿⣿⣿⣿⣿⣷⣦\r\n⣿⣿⣧⡀⠿⠇⣰⣿⡟⠉⠉⢻⡆⠈⠟⠛⣿⣿⣿⣯⡉⢁⣀⣈⣉⣽⣿⣿⣿⣷\r\n⡿⠛⠛⠒⠚⠛⠉⢻⡇⠘⠃⢸⡇⢀⣤⣾⠋⢉⠻⠏⢹⠁⢤⡀⢉⡟⠉⡙⠏⣹\r\n⣿⣦⣶⣶⢀⣿⣿⣿⣷⣿⣿⣿⡇⢀⣀⣹⣶⣿⣷⠾⠿⠶⡀⠰⠾⢷⣾⣷⣶⣿\r\n⣿⣿⣿⣿⣇⣿⣿⣿⣷⣿⣿⣿⣇⣰⣿⣿⣷⣿⣿⣷⣤⣴⣶⣶⣦⣼⣿⣿⣿⣷";
-
-char bigbird[] = "                         .,,;!!=:-                \r\n                      ,-*@#@@@@@@$~               \r\n                     *$@@@@@@@@@@@@@~             \r\n                   !#@@@@@@@@@@@@@@@@@*.          \r\n                 -*#@@@@@@@@@@@@@@@@@@@=,        ~\r\n                .;@@!:#@@@@@@@@@@@@@@@@@#:   . ,#:\r\n               ,=@@=~,;@@@@@@@@@@@@@@@@@@@@@@@@@@.\r\n               @@@#~-- @#@@@@@@@@@@@@@@@@@@@@@@@= \r\n             .!@@@#::- =:=@@@@@@@@@@@@@@@@@@@@@@. \r\n             !@##-$*-- #::@@@@@@@@@@@@@@@@@@@@@$  \r\n             #-:@~*#, .#::~#@@@@@@@@@@@@@@@@@@@$  \r\n            :#: #*.-$==@$#!,@@@@@@@@@@@@@@@@@@@.  \r\n            $$~ *,. -=;.#@@@@@@@@@@@@@@@@@@@@@@   \r\n           .@#.,=-~; $;!#*,#@@@@@@@@@@@@@@@@@@;   \r\n           ,@@##$-;~ $-==!$.@@@@@@@@@@@@@@@@@@,   \r\n           ~@@$~!~-* #:.$!* #@@@@@@@@@@@@@@@@@,   \r\n           :@@#:::: !#$$;!-~##@@@@@@@@@@@@@@@@    \r\n           ~@@$,;@=$#;;!: $#~.$@@@@@@@@@@@@@@@.   \r\n           -@###*...@- ;*,-@-!-#@@@@@@@@@@@@@@,   \r\n           ,$~~$;,: ~##,*-.#!:-@@@@@@@@@@@@@@@    \r\n           ,#~~~;$$; ##$  :#@;#@@@@#@@@@@@@@@$    \r\n            @;!:*~~. !##=*#:-*@@@@@@@@@@@@@@@;    \r\n            #=~$!~ !-~@###!~~.#@@@@@@@@@@@@@@-    \r\n            !@-**;.=; $, #;=; $@@@@@@@@@@@@@#.    \r\n           -##~,$=;~; #;-**;; =@@@@@@@@@@@@@*     \r\n          =@@@;:#::., @;*!$-. $#@@@@@@@@@@@@.     \r\n        .#@@@@#$@;~,,,#--!@*;$@@@@@@@@@@@@@:      \r\n       ;@#@@@@@@@#~::$#@$@##@#@@@@@@@@@@@@$       \r\n     .###@@@@@@@@@@#@@#@@@@@@@@@@@@@@@@@@@;       \r\n    :@@@@*!;--,!@@@@@@##@@@@@@@@@@@@@@@@@*        \r\n  .:-           ,#@@@@@@@@@@@@@@@@@@@@@@:         \r\n          ,::$,!. $@@@@@@@@@@@@@@@@@@@$           \r\n         ;##@@@@@= *#@@@@@@@@@@@@@@@@-            \r\n        -$~=$#@@@@# .@@#@@@@@@@@@@@@@@-           \r\n        .!;;*$##@@@#=@: -:*@@@@$~.,*@@@;          \r\n         :,!,;:!,.@@@;      #@@@.   -#@@#~        \r\n         :.-       !         =@@@=    $@@*        \r\n         ;;-,                 *@@;     @@:        \r\n        ,.,~                 .@@#     -@@         \r\n        .. ,                 #@@      *@!         \r\n        ,. .         .      #@@       #@          \r\n        -  ..    ,@=## .   #@@.  -   -@@          \r\n        -  ,.   ,#$@@@=#  #@#.*!!@-- =@-          \r\n        ....   ,=~$#-=@@$@@#.,@@@@@@;@#           \r\n               - =* ~*.!;;;  #=#$.@@@@~           \r\n                !. .!       ::,# ;~               \r\n               .   :        - =  !                \r\n                             :  -                 \r\n                                .\r\n";
+struct
+{
+    char title[EMOJI_TITLELEN_MAX];
+    unsigned int len;   // return type of ftell
+} emojis[EMOJI_VARIANT_MAX];
 
 struct sClient
 {
@@ -275,9 +280,9 @@ void check_append_emojis(char *msg, char *mdest)
     // EMOJI EMBEDDER
     // CURRENTLY SUPPORTS: EMBEDDED :myh: AND :bigbird:
 
-    char message[BUF_SIZE];
-    memcpy(message, msg, BUF_SIZE);
-    memset(mdest, 0, BUF_SIZE);
+    char message[MSG_SIZE];
+    memcpy(message, msg, MSG_SIZE);
+    memset(mdest, 0, MSG_SIZE);
 
     // TYPE *CHAR BECAUSE OF MSG TYPE,
     // BUT USED INT-CASTED FOR GETTING SIZE USING MEMORY LOCATION COMPARISONS
@@ -287,42 +292,88 @@ void check_append_emojis(char *msg, char *mdest)
     // GET THE SIZE VALUE INBETWEEN
     int inbet;
 
-    int had_myh = 0;
-    
-    index = strstr(message, ":myh:");
-    if (index)
-    {
-        inbet = (int)index - (int)message;
-        
-        memcpy(mdest, message, inbet);
-        sprintf(&mdest[inbet], "\r\n%s\r\n%s", myh, &message[inbet + sizeof(":myh:") - 1]);
+    // message and mdest ROLE SWAP
+    int swap = 0;
 
-        had_myh = 1;
+    // emoji SWAP 로그 출력에서의 초기 줄넘김 삽입 위한
+    int first = 1;
+
+    // 이모티콘 txt 하나씩 읽음
+    FILE *fp;
+
+    // 실제 이모티콘을 dynamic array하게 저장
+    char *tmp_emoji;
+
+    for (int i = 0; i < emojiCnt; i++)
+    {
+        // LENGTH of emoji DATA (2656, 1178, <...>)
+        int LEN = emojis[i].len;
+
+        // :myh:, :bigbird:, <:...:>
+        char TOKEN[EMOJI_TITLELEN_MAX + 2 + 1] = ":";
+        strcat(TOKEN, emojis[i].title);
+        strcat(TOKEN, ":");
+
+        // fopen()에 넣을 경로
+        char cd[EMOJI_TITLELEN_MAX + 9 + 1] = "./emojis/";
+        strcat(cd, emojis[i].title);
+        strcat(cd, ".txt");
+
+        fp = fopen(cd, "r");
+        if (fp == NULL) { printf("Error opening file %s :(\r\n", cd); exit(1); }
+
+        // 읽을 emoji.txt의 길이만큼 할당
+        tmp_emoji = (char*)malloc((LEN + 1) * sizeof(char));
+        if (tmp_emoji == NULL) { printf("malloc error on %s :(\r\n", cd); exit(1); }
+
+        // emoji.txt의 데이터 대입
+        size_t newLen = fread(tmp_emoji, sizeof(char), LEN, fp);
+        if (ferror(fp) != 0) { fputs("Error reading file %s :(\r\n", cd); exit(1); }
+        else tmp_emoji[newLen] = 0;
+
+        fclose(fp);
+
+        index = strstr(swap ? mdest : message, TOKEN);
+        
+        if (index)
+        {
+            if (first) { for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n"); first = 0; }
+
+            printf("\r\n==============================================\r\n------------------------------------------\r\n%s\r\n\nㄴ==> Before swap", message, i, TOKEN);
+
+            if (swap)
+            {
+                inbet = (int)index - (int)mdest;
+
+                memcpy(message, mdest, inbet);
+                sprintf(&message[inbet], "\r\n%s\r\n%s", tmp_emoji, &mdest[inbet + strlen(TOKEN)]);
+                memcpy(mdest, message, MSG_SIZE);
+
+                printf("\r\n------------------------------------------\r\n%s\r\n\nㄴ==> After swap\r\n------------------------------------------\r\ni = %d, swapped %s\r\n======================================\r\n", message, i, TOKEN);
+
+                swap = 0;
+            }
+            
+            else
+            {
+                inbet = (int)index - (int)message;
+
+                memcpy(mdest, message, inbet);
+                sprintf(&mdest[inbet], "\r\n%s\r\n%s", tmp_emoji, &message[inbet + strlen(TOKEN)]);
+                memcpy(message, mdest, MSG_SIZE);
+
+                printf("\r\n------------------------------------------\r\n%s\r\n\nㄴ==> After swap\r\n------------------------------------------\r\ni = %d, swapped %s\r\n==============================================\r\n", message, i, TOKEN);
+
+                swap = 1;
+            }
+        }
+
+        // 공간 사용 후 비움
+        memset(tmp_emoji, 0, LEN);
+        free(tmp_emoji);
     }
 
-    // 
-    // message and mdest role swap time!
-    // 
-
-    index = strstr(had_myh ? mdest : message, ":bigbird:");
-    
-    if (index)
-    {
-        if (had_myh) {
-            inbet = (int)index - (int)mdest;
-
-            memcpy(message, mdest, inbet);
-            sprintf(&message[inbet], "\r\n%s\r\n%s", bigbird, &mdest[inbet + sizeof(":bigbird:") - 1]);
-            memcpy(mdest, message, BUF_SIZE);
-        }
-        
-        else {
-            inbet = (int)index - (int)message;
-
-            memcpy(mdest, message, inbet);
-            sprintf(&mdest[inbet], "\r\n%s\r\n%s", bigbird, &message[inbet + sizeof(":bigbird:") - 1]);
-        }
-    }
+    if (!first) for (int i = 0; i < MIN_ERASE_LINES + PP_LINE_SPACE; i++) printf("\r\n");
 
     fflush(stdout);
 }
@@ -814,7 +865,11 @@ int main(int argc, char **argv)
         printf("Usage: %s <PORT>\n", argv[0]);
         exit(1);
     }
-    
+
+    // https://stackoverflow.com/a/34550798
+    DIR *dirp = opendir("./emojis");
+    static struct dirent *dir;
+
     time_t inittime;    // 서버가 시작된 시각
     time_t lasttime;    // 마지막 heartbeat 시각
     time_t now;         // 실시간 시각 (메인 반복문에서 매 순간 갱신)
@@ -875,7 +930,7 @@ int main(int argc, char **argv)
     int on = 1;
 
     serv_sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (serv_sock == -1) perror_exit("socket() error");
+    if (serv_sock == -1) perror_exit("socket() error!\n");
 
     memset(&serv_addr, 0x00, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
@@ -895,10 +950,10 @@ int main(int argc, char **argv)
     setsockopt(serv_sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void*)&join_addr, sizeof(join_addr));
 
     state = bind(serv_sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-    if (state == -1) perror_exit("bind() error");
+    if (state == -1) perror_exit("bind() error!\n");
 
     state = listen(serv_sock, 5);
-    if (state == -1) perror_exit("listen() error");
+    if (state == -1) perror_exit("listen() error!\n");
 
     clnt_sock = serv_sock;
 
@@ -916,7 +971,38 @@ int main(int argc, char **argv)
     FD_ZERO(&readfds);
     FD_SET(serv_sock, &readfds);
 
-    printf("\nStarted TCP Server.\n\n");
+    printf("\n\033[1;4;33mSTARTED TCP SERVER.\033[0m\n");
+
+    // GET EMOJI NAMES.
+    if (dirp)
+    {
+        FILE *fp;
+
+        printf("\nUsable emojis (in ascending order):\n\n\033[1m");
+
+        while ((dir = readdir(dirp)) != NULL)
+        {
+            if (strstr(dir->d_name, ".txt"))
+            {
+                memcpy(emojis[emojiCnt].title, dir->d_name, strlen(dir->d_name) - 4);
+
+                printf("  - %s\n", emojis[emojiCnt].title);
+
+                char cd[] = "./emojis/";
+                strcat(cd, dir->d_name);
+
+                fp = fopen(cd, "r");
+                fseek(fp, 0L, SEEK_END);
+                emojis[emojiCnt].len = (int)ftell(fp);
+                fclose(fp);
+
+                emojiCnt++;
+            }
+        }
+        closedir(dirp);
+    }
+
+    printf("\033[0m\nemojiCnt: %d\n\n", emojiCnt);
 
     fflush(0);
     
