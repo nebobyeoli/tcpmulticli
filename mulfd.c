@@ -25,6 +25,7 @@
 //// 마지막에 아래 정리해서 아래 변수들 함수들 헤더랑 따로 만들어서 담을 것
 
 #define BUF_SIZE        1024 * 2    // 임시 크기(1024 * n): 수신 시작과 끝에 대한 cmdcode 추가 사용 >> MMS 수신 구현 전까지
+#define MSG_SIZE        2000
 #define CMDCODE_SIZE    4           // cmdcode의 크기
 #define CMD_SIZE        20          // cmdmode에서의 명령어 최대 크기
 #define NAME_SIZE       30          // 닉네임 최대 길이
@@ -38,14 +39,22 @@
 #define MIN_ERASE_LINES     1           // 각 출력 사이의 줄 간격 - 앞서 출력된 '입력 문구'를 포함하여, 다음 메시지 출력 전에 지울 줄 수
 #define PP_LINE_SPACE       3           // 최솟값: 1  // 출력되는 메시지들과 '입력 문구' 사이 줄 간격
 
-#define HEARTBEAT_CMD_CODE 1500
-#define HEARTBEAT_REQ_CODE 1501
-#define HEARTBEAT_STR_CODE 1502
+#define SERVMSG_CMD_CODE    1000
+
+#define HEARTBEAT_CMD_CODE  1500
+#define HEARTBEAT_REQ_CODE  1501
+#define HEARTBEAT_STR_CODE  1502
 
 #define SINGLECHAT_REQ_CODE     1600
 #define SINGLECHAT_RESP_CODE    1601
 #define CHANCHAT_REQ_CODE       1602
-#define CHANCHAT_RESP_CODE      1602
+#define CHANCHAT_RESP_CODE      1603
+
+#define SETNAME_CMD_CODE        2000
+
+#define OPENCHAT_CMD_CODE       3000
+#define SINGLECHAT_CMD_CODE     3001
+
 
 int global_curpos = 0;
 
@@ -119,9 +128,9 @@ void sendAll(int clnt_cnt, int cmdcode, char *sender, char *msg, char *servlog)
     // APPEND CMDCODE
     sprintf(message, "%d", cmdcode);
     // APPEND NAME OF SENDER
-    sprintf(&message[CMDCODE_SIZE + 1], "%s", sender);
+    sprintf(&message[CMDCODE_SIZE], "%s", sender);
     // APPEND MESSAGE
-    sprintf(&message[CMDCODE_SIZE + NAME_SIZE + 2], "%s", msg);
+    sprintf(&message[CMDCODE_SIZE + NAME_SIZE], "%s", msg);
     
     if (servlog) printf("\r\nMESSAGE FROM SERVER: %s\r\n", servlog);
     printf("Length of buf: %d\r\n", (int)strlen(msg));
@@ -157,6 +166,7 @@ void send_singlechat_response(int from, int to_sock, int accepted)
     write(to_sock, pass, 4 * 3);
 }
 
+// singlechat <요청>에 대한 항목 추출
 void extract_singlechat_response(char *buf, int *member_srl, int *accepted)
 {
     char tmp[4] = { 0, };
@@ -166,7 +176,6 @@ void extract_singlechat_response(char *buf, int *member_srl, int *accepted)
     memcpy(tmp, &buf[4 * 2], 4);
     *accepted = atoi(tmp);
 }
-
 
 // GET LINEFEED COUNT OF BUFFER LIST
 /*
@@ -1186,8 +1195,8 @@ int main(int argc, char **argv)
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + lfcnt, 1, bp);
 
                         // SEND
-                        if (index)  sendAll(clnt_cnt, 1000, serv_name, umdest, mdest);
-                        else        sendAll(clnt_cnt, 1000, serv_name, buf, buf);
+                        if (index)  sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, umdest, mdest);
+                        else        sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, buf, buf);
 
                         global_curpos = 0;
                         
@@ -1325,7 +1334,7 @@ int main(int argc, char **argv)
                         // SEND DISCONNECTED INFORMATION TO ALL CLIENTS
                         memset(message, 0, BUF_SIZE);
                         sprintf(message, "%s left the chat.", names[i]);
-                        sendAll(clnt_cnt, 1000, serv_name, message, message);
+                        sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, message, message);
 
                         memset(names[i], 0, NAME_SIZE);
                     }
@@ -1344,8 +1353,13 @@ int main(int argc, char **argv)
                     {
                         if (cmdmode) moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
                         else         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + getLFcnt(blist), 1, bp);
+
+                        int msgoffset;
+
+                        if (cmdcode == OPENCHAT_CMD_CODE) msgoffset = CMDCODE_SIZE + NAME_SIZE;
+                        else if (cmdcode == SINGLECHAT_CMD_CODE) msgoffset = CMDCODE_SIZE * 3;
                         
-                        printf("\r\nReceived from [%d] (%s): %s %s\r\n", client[i], names[i], buf, &buf[CMDCODE_SIZE + NAME_SIZE + 2]);
+                        printf("\r\nReceived from [%d] (%s): %s %s\r\n", client[i], names[i], buf, &buf[msgoffset]);
                     }
 
                     //
@@ -1380,8 +1394,9 @@ int main(int argc, char **argv)
                         int req_to = atoi(&buf[CMDCODE_SIZE]);
 
                         printf("Singlechat Requested from %d [%d] to %d [%d]\r\n", i, client[i], req_to, client[req_to]);
-                        
-                        if (client[req_to] == -1)
+
+                        // 해당 클라이언트 연결이 없거나 이름 설정 안 되어 있음
+                        if (client[req_to] == -1 || names[req_to][0] <= 0)
                         {
                             printf("%d is not an existing client.\r\n", req_to);
                             send_singlechat_response(serv_sock, client[i], 0);
@@ -1416,7 +1431,7 @@ int main(int argc, char **argv)
                         }
                     }
                     
-                    else if (cmdcode == 2000)
+                    else if (cmdcode == SETNAME_CMD_CODE)
                     {
                         // CHECK IF REQUESTED NAME IS TAKEN
                         int taken = 0;
@@ -1449,16 +1464,18 @@ int main(int argc, char **argv)
                             // SEND JOIN INFORMATION TO ALL CLIENTS
                             memset(message, 0, BUF_SIZE);
                             sprintf(message, "%s joined the chat!", names[i]);
-                            sendAll(clnt_cnt, 1000, serv_name, message, message);
+                            sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, message, message);
                         }
                     }
 
                     //// MODE : MESSAGE ////
 
-                    else if (cmdcode == 3000)
+                    else if (cmdcode == OPENCHAT_CMD_CODE || cmdcode == SINGLECHAT_CMD_CODE)
                     {
                         char msg[BUF_SIZE], mdest[BUF_SIZE];
-                        strcpy(msg, &buf[CMDCODE_SIZE + NAME_SIZE + 2]);
+
+                        if (cmdcode == OPENCHAT_CMD_CODE) strcpy(msg, &buf[CMDCODE_SIZE + NAME_SIZE]);
+                        else strcpy(msg, &buf[CMDCODE_SIZE * 3]);
                         
                         // CHECK FOR EMOJIS
                         // 아래에 대한 구체적 주석은 emojis 브랜치의 check_append_emojis()에 작성할 것.
@@ -1476,9 +1493,26 @@ int main(int argc, char **argv)
                             fflush(stdout);
                         }
 
-                        // SEND RECEIVED MESSAGE TO ALL CLIENTS
                         memset(message, 0, BUF_SIZE);
-                        sendAll(clnt_cnt, 3000, names[i], index ? mdest : msg, NULL);
+
+                        if (cmdcode == OPENCHAT_CMD_CODE)
+                        {
+                            // SEND RECEIVED MESSAGE TO ALL CLIENTS
+                            sendAll(clnt_cnt, OPENCHAT_CMD_CODE, names[i], index ? mdest : msg, NULL);
+                        }
+                        else
+                        {
+                            char tmp[5] = {0,};
+                            memcpy(&tmp, &buf[CMDCODE_SIZE * 2], sizeof(int));
+                            int target = atoi(tmp);
+
+                            printf("Singlechat: %d [%d] ==> %d [%d]", i, client[i], target, client[target]);
+                            fflush(stdout);
+
+                            // 온 거 그대로 전달 <...>
+                            write(client[i], buf, BUF_SIZE);
+                            write(client[target], buf, BUF_SIZE);
+                        }
                     }
 
                     //// FAILED TO IDENTIFY CMDCODE ////
