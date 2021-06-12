@@ -38,26 +38,9 @@ Branch name | Pull request | Description
 **clistat** | [Manage Client Status](https://github.com/nebobyeoli/tcpmulticli/pull/2) | Server/Client 필요 기능 조건
 **emojis**  | [Emoji support](https://github.com/nebobyeoli/tcpmulticli/pull/1) | 텍스트 이미지 이모티콘 및 긴 `mms` 송수신에 관하여
 **keyinput**  | [Keyboard input by character](https://github.com/nebobyeoli/tcpmulticli/pull/4) | `termios`를 이용한 사용자 정의 `kbhit()` 및 `getch()` 활성화 <br> 글자를 하나씩 입력받아 직접 할당하는 방식으로의 입력 구현 <br> 즉 `엔터` 없이도, 입력 `중의` 입력 버퍼를 직접 관리할 수 있도록 하는 작업
+**singles**  | [1 : 1 채팅 기반 구현](https://github.com/nebobyeoli/tcpmulticli/pull/11) | 개인 채팅 구현
 
-## Cmd code significations
-
-#### 1000의 배수, 적어도 100의 배수로 정하는 것을 원칙으로 한다.
-
-Cmd code | Meaning
--------- | ---------------------
-**1000** | Message from server
-**1500** | `HEARTBEAT` interaction<br>`HB 송수신 코드를 각각 따로 분리하지 않아도 될까?`
-**2000** | Set client nickname
-**3000** | Message communication
-
-## Message format
-
-Name              | `cmdcode`      | `sender`    | `msg`
------------------ | -------------- | ----------- | ----------
-**Size constant** | `CMDCODE_SIZE` | `NAME_SIZE` | `BUF_SIZE`
-**Size**          | `4`            | `30`        | `1024 * n`
-
-Message is concatenated via `sprintf()`.
+<!-- Message is concatenated via `sprintf()`.
 
 Example:
 ```c
@@ -75,7 +58,46 @@ sprintf(message, "%d", cmdcode);
 sprintf(&message[CMDCODE_SIZE + 1], "%s", sender);
 // APPEND MESSAGE
 sprintf(&message[CMDCODE_SIZE + NAME_SIZE + 2], "%s", msg);
+``` -->
+
+## Server log info
+
+```c
+// Output example
 ```
+```txt
+Received from A [B] (C)
+
+<< HEARTBEAT at [t: %ld] from A [B] (C)
+```
+```c
+// t:   Time since server launch        [LONG INT] (time(0) 반환형)
+// A:   Client INDEX                    [INT]
+// B:   Client SOCKET                   [INT]
+// C:   Client NAME                     [CHAR*]
+```
+
+## Cmd code significations
+
+#### 기본은 천의 자리 수와 백의 자리 수로 구분하는 것을 원칙으로 한다.
+
+Cmd code | Constant                | Meaning
+-------- | ----------------------- | ---------------------
+**1000** | `SERVMSG_CMD_CODE`      | **Message from server**
+**1500** | `HEARTBEAT_CMD_CODE`    | **HEARTBEAT 송수신**
+**1501** | `HEARTBEAT_REQ_CODE`    | **Memberlist request**
+  1601   | `SINGLECHAT_REQ_CODE`   | 개인 채팅 요청
+  1602   | `SINGLECHAT_RESP_CODE`  | 개인 채팅 요청 응답
+  2000   | `SETNAME_CMD_CODE`      | Set client nickname
+  3000   | `OPENCHAT_CMD_CODE`     | Messaging - Open chat `오픈채팅`
+**3001** | `SINGLECHAT_CMD_CODE`   | **Messaging - Single chat `개인채팅`**
+
+## Message format
+
+Name              | `cmdcode`      | `sender`    | `msg`
+----------------- | -------------- | ----------- | ----------
+**Size constant** | `CMDCODE_SIZE` | `NAME_SIZE` | `BUF_SIZE`
+**Size**          | `4`            | `30`        | `1024 * n`
 
 ## Nickname requisites
 
@@ -260,6 +282,30 @@ Command   | Description | Appearance
   ```
   </details>
 
+</details>
+
+<details>
+  <summary>(stashed - 만들어 놓고 보니 사용 안 해서 다시 지움)</summary><br>
+
+  ```c
+  // mulfd.c
+
+  // singlechat <메시지>에 대한 항목 추출
+  // char *chat_msg:  추출된 메시지 저장 배열,
+  // char *message:   read() 받은 메시지 자체
+  void disassembleSinglechat(int *target_srl, char *chat_msg, char *message)
+  {
+      char tmp[5]={0,};
+      int offset = sizeof(int);
+  
+      memcpy(&tmp, &message[offset], sizeof(int));
+      offset += sizeof(int);
+      *target_srl = atoi(tmp);
+  
+      memcpy(chat_msg, &message[offset], MSG_SIZE);
+  }
+
+  ```
 </details>
 
 ##

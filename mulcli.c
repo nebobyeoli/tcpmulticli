@@ -24,6 +24,7 @@
 //// 마지막에 아래 정리해서 아래 변수들 함수들 헤더랑 따로 만들어서 담을 것
 
 #define BUF_SIZE        1024 * 2    // 임시 크기(1024 * n): 수신 시작과 끝에 대한 cmdcode 추가 사용 >> MMS 수신 구현 전까지
+#define MSG_SIZE        2000
 #define CMDCODE_SIZE    4           // cmdcode의 크기
 #define CMD_SIZE        20          // cmdmode에서의 명령어 최대 크기
 #define NAME_SIZE       30          // 닉네임 최대 길이
@@ -40,13 +41,25 @@
 
 int global_curpos = 0;
 
-#define HEARTBEAT_CMD_CODE 1500
-#define HEARTBEAT_REQ_CODE 1501
-#define HEARTBEAT_STR_CODE 1502
+#define SERVMSG_CMD_CODE    1000
+
+#define HEARTBEAT_CMD_CODE  1500
+#define HEARTBEAT_REQ_CODE  1501
+#define HEARTBEAT_STR_CODE  1502
+
+#define SINGLECHAT_REQ_CODE     1600
+#define SINGLECHAT_RESP_CODE    1601
+#define CHANCHAT_REQ_CODE       1602
+#define CHANCHAT_RESP_CODE      1603
+
+#define SETNAME_CMD_CODE        2000
+
+#define OPENCHAT_CMD_CODE       3000
+#define SINGLECHAT_CMD_CODE     3001
 
 int MEMBER_SRL = -1;    // -1: 미지정
 
-/* 실제 입력 관리: 이중 리스트 api 사용.
+/* 실제 입력 관리: 이중 리스트 api 사용하였다.
  * 엔터를 쳤을 때 blist 또는 clist의 데이터를 buf[]로 저장하고,
  * 해당 리스트를 초기화한다.
  */
@@ -110,10 +123,35 @@ void send_msg(int cmdcode, char *msg)
     memset(message, 0, BUF_SIZE);
 
     sprintf(message, "%d", cmdcode);
-    sprintf(&message[CMDCODE_SIZE + 1], "%s", nname);
-    sprintf(&message[CMDCODE_SIZE + NAME_SIZE + 2], "%s", msg);
+    sprintf(&message[CMDCODE_SIZE], "%s", nname);
+    sprintf(&message[CMDCODE_SIZE + NAME_SIZE], "%s", msg);
 
     write(sock, message, BUF_SIZE);
+}
+
+void send_singlechat(char *message)
+{
+    char result[BUF_SIZE] = {0,};
+    memset(&result, 0, BUF_SIZE);
+
+    char tmp[5] = {0,};
+    int offset = 0;
+
+    itoa(SINGLECHAT_CMD_CODE, tmp);
+    memcpy(&result, &tmp, sizeof(int));
+    offset = sizeof(int);
+
+    itoa(MEMBER_SRL, tmp);
+    memcpy(&result[offset], &tmp, sizeof(int));
+    offset += sizeof(int);
+
+    itoa(client_data[MEMBER_SRL].target, tmp);
+    memcpy(&result[offset], &tmp, sizeof(int));
+    offset += sizeof(int);
+
+    memcpy(&result[offset], message, strlen(message));
+
+    write(sock, result, BUF_SIZE);
 }
 
 // MESSAGE RECEIVER: ALSO SETS PARAMETER VALUES TO 0
@@ -122,25 +160,50 @@ void send_msg(int cmdcode, char *msg)
  * int *cmdcode: cmdcode값을 직접 수정해 주기 때문에 포인터로 받는다.
  * 각 크기 변수를 배열 인덱스로 활용해, 메시지 데이터들을 인자로 주어진 각 변수에 저장한다.
  */
+// NULL 문자 삽입 없앰
 int recv_msg(int *cmdcode, char *sender, char *message)
 {
     char buf[BUF_SIZE];
     int rresult;
 
     memset(sender, 0, NAME_SIZE);
-    memset(buf, 0, BUF_SIZE);
+    memset(buf, 0, MSG_SIZE);
     memset(message, 0, BUF_SIZE);
 
     if ((rresult = read(sock, buf, BUF_SIZE)) < 0) return rresult;
 
-    // RETRIEVE CMDCODE
-    *cmdcode = atoi(buf);
-    // RETRIEVE NAME OF SENDER
-    sprintf(sender, "%s", &buf[CMDCODE_SIZE + 1]);
-    // RETRIEVE MESSAGE
-    sprintf(message, "%s", &buf[CMDCODE_SIZE + NAME_SIZE + 2]);
+    char tmp[5] = {0,};
+    int offset = 0;
+
+    memcpy(tmp, buf, sizeof(int));
+    offset = sizeof(int);
+    *cmdcode = atoi(tmp);
+
+    memcpy(sender, &buf[offset], sizeof(sender));
+    offset += sizeof(sender);
+    
+    memcpy(message, &buf[offset], sizeof(message));
 
     return rresult;
+}
+
+void send_singlechat_request(int member_srl)
+{
+    char pass[CMDCODE_SIZE * 2] = { 0, };
+
+    sprintf(pass, "%d", SINGLECHAT_REQ_CODE);
+    sprintf(&pass[CMDCODE_SIZE], "%d", member_srl);
+    write(sock, pass, 4 * 2);
+}
+
+void send_singlechat_response(int member_srl, int accepted)
+{
+    char pass[CMDCODE_SIZE * 3] = { 0, };
+
+    sprintf(pass, "%d", SINGLECHAT_RESP_CODE);
+    sprintf(&pass[CMDCODE_SIZE], "%d", member_srl);
+    sprintf(&pass[CMDCODE_SIZE * 2], "%d", accepted);
+    write(sock, pass, 4 * 3);
 }
 
 
@@ -714,7 +777,8 @@ int main(int argc, char *argv[])
     struct sockaddr_in serv_addr;   // 서버 주소 저장
     
     struct  timeval tr;     // timeval_receive
-    fd_set  readfds;        // CONTROLS SELECT
+    fd_set  readfds;        // CONTROLS SELECT [once set: read-only]
+    fd_set  allfds;         // SELECT에 의해 변화됨
 
     /* buf[]와 message[]의 용도 규칙은 따로 없으나
      * 보통 입력 저장 및 임시 저장소는 buf[],
@@ -763,12 +827,6 @@ int main(int argc, char *argv[])
     join_addr.imr_interface.s_addr = htonl(INADDR_ANY);
     setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void*)&join_addr, sizeof(join_addr));
 
-    // SET TIMEOUT OF read()
-    // https://stackoverflow.com/a/2939145
-    // 이렇게 하면 아예 소켓 옵션으로 read()에 타임아웃을 걸 수 있어 유용하다.
-    // 바로 위 setsockopt()과는 별개임!
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tr, sizeof(tr));
-    
     if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) == -1)
         perror_exit("connect() error!");
     
@@ -787,7 +845,7 @@ int main(int argc, char *argv[])
     {
         printf("NICKNAME: ");
 
-        fgets(buf, BUF_SIZE, stdin);
+        fgets(buf, MSG_SIZE, stdin);
 
         // 마지막 줄넘김 없애기: '\n' 문자까지 대기 후 (int)0으로 대체
         for (namelen = 0; buf[namelen] != '\n'; namelen++);
@@ -814,7 +872,7 @@ int main(int argc, char *argv[])
 
         else
         {
-            sprintf(message, "2000");
+            sprintf(message, "%d", SETNAME_CMD_CODE);
             sprintf(&message[CMDCODE_SIZE + 1], "%s", buf);
             
             write(sock, message, CMDCODE_SIZE + 1 + namelen);
@@ -822,7 +880,7 @@ int main(int argc, char *argv[])
             memset(message, 0, BUF_SIZE);
             read(sock, message, ACCEPT_MSG_SIZE);
 
-            if (atoi(message) == 0)
+            if (message[0] == '0')
             {
                 moveCursorUp(warned ? 2 : 1, 0, 0);
                 printf("Sorry, but the name %s is already taken.\n", buf);
@@ -848,14 +906,213 @@ int main(int argc, char *argv[])
 
     fflush(0);
 
-	//Modify
-	firstScene(); // 메인화면 다시 띄우기
-	char k[10] = { 0, };
-	scanf("%s", k);
-	printf("Command input : %s\n", k);//디버그용 임시코드
+    //// FIRST 메인 화면 출력
+
+	firstScene();
+    printf("\n\n\n%s", cmd_message);
+    fflush(stdout);
+
+    FD_ZERO(&readfds);
+    FD_SET(0, &readfds);
+    FD_SET(sock, &readfds);
+    // printf("[[%d]]\n\n\n\n", sock);
+
+    int waiting_for_server = 0;
+    int waiting_for_target = 0;
+    int waiting_for_me = 0;
+
+    int req_from = -1;
+    int req_to   = -1;
+
+    while (1)
+    {
+        allfds = readfds;
+
+        if (select(sock + 1, &allfds, 0, 0, 0))
+        {
+            if (FD_ISSET(sock, &allfds))
+            {
+                memset(buf, 0, BUF_SIZE);
+                read(sock, buf, BUF_SIZE);
+
+                char cmd_code[5] = {0,};
+                memcpy(&cmd_code, &buf, sizeof(int));
+                int cmdcode = atoi(cmd_code);
+
+                if (cmdcode == HEARTBEAT_CMD_CODE)
+                {
+                    struct HeartBeatPacket hbp;
+                    hbp.cmd_code = HEARTBEAT_CMD_CODE;
+                    hbp.member_srl = 0; // @todo 서버로부터 받아온 member_srl을 넣기
+                    hbp.chat_status = 1;
+                    hbp.target = 2;
+                    hbp.is_chatting = 1;
+
+                    char message[BUF_SIZE] = {0,};
+                    heartbeatSerialize(message, &hbp);
+
+                    write(sock, message, BUF_SIZE);
+                }
+
+                else if (cmdcode == SINGLECHAT_REQ_CODE)
+                {
+                    req_from = atoi(&buf[4]);
+
+                    moveCursorUp(1, 1, 0);
+                    printf("Client %d (클라정보 nick[i]) requested a private chat. Accept? [y/n]:\n> ", req_from);
+                    
+                    fflush(0);
+
+                    waiting_for_me = 1;
+                }
+
+                else if (cmdcode == SINGLECHAT_RESP_CODE)
+                {
+                    if (waiting_for_server)
+                    {
+                        waiting_for_server = 0;
+
+                        moveCursorUp(1, 1, 0);
+
+                        if (atoi(&buf[4 * 2]))  // Is existing client
+                        {
+                            printf("%d is an existing client. Waiting for response...\n", req_to);
+                            fflush(0);
+
+                            waiting_for_target = 1;
+                        }
+
+                        else
+                        {
+                            printf("%d is not an existing client.\n> ", req_to);
+                            fflush(0);
+                        }
+                    }
+
+                    else if (waiting_for_target)
+                    {
+                        waiting_for_target = 0;
+
+                        int accepted = atoi(&buf[4 * 2]);
+                        if (accepted)
+                        {
+                            moveCursorUp(0, 1, 0);
+                            printf("%d (클라정보 nick[i]) accepted the chat request.\n", req_to);
+                            fflush(0);
+
+                            client_data[MEMBER_SRL].target = req_to;
+                            client_data[req_to].target = MEMBER_SRL;
+
+                            // 이제 채팅할 수 있다.
+                            break;
+                        }
+
+                        else
+                        {
+                            moveCursorUp(1, 1, 0);
+                            printf("%d (클라정보 nick[i]) declined the chat request.\n> ", req_to);
+                            fflush(0);
+                        }
+                    }
+                }
+            }
+
+            if (FD_ISSET(0, &allfds))
+            {
+                memset(cmd, 0, sizeof(cmd));
+                fgets(cmd, sizeof(cmd), stdin);
+                cmd[strlen(cmd) - 1] = 0;   // 마지막 줄넘김 제거
+
+                if (waiting_for_me)
+                {
+                    waiting_for_me = 0;
+
+                    if (cmd[0] == 'y' || cmd[0] == 'Y')
+                    {
+                        moveCursorUp(1, 1, 0);
+
+                        send_singlechat_response(req_from, 1);
+                        
+                        client_data[MEMBER_SRL].target = req_from;
+                        client_data[req_from].target = MEMBER_SRL;
+                        printf("Accepted chat request.\n");
+
+                        // 이제 채팅할 수 있다.
+                        break;
+                    }
+                    else
+                    {
+                        moveCursorUp(2, 1, 0);
+
+                        send_singlechat_response(req_from, 0);
+
+                        printf("Declined chat request.\n> ");
+                    }
+
+                    fflush(stdout);
+                }
+
+                else if (!waiting_for_target)
+                {
+                    //// 명령어에 따른 초기 동작 실행
+
+                    // 숫자로 시작하면
+                    if (cmd[0] > 47 && cmd[0] < 58)
+                    {
+                        if (strlen(cmd) > 2)
+                        {
+                            moveCursorUp(2, 0, 0);
+                            printf("\033[1;33mNi de \033[4;7mCRAZY\033[0;1;33m ma?\033[0m\n> ");
+                            fflush(0);
+                            continue;
+                        }
+
+                        req_to = atoi(cmd);
+
+                        // ignore request to SELF
+                        if (req_to == MEMBER_SRL)
+                        {
+                            moveCursorUp(2, 0, 0);
+                            printf("\033[1;33m호구짓 하지 마쇼!!\033[0m\n> ");
+                            fflush(0);
+                            continue;
+                        }
+                        
+                        send_singlechat_request(req_to);
+
+                        moveCursorUp(2, 1, 0);
+                        printf("Requested chat with client %d. Waiting for response...\n", req_to);
+
+                        waiting_for_server = 1;
+                    }
+
+                    // 'c'로 시작하면
+                    else if (cmd[0] == 'c')
+                    {
+                        moveCursorUp(2, 1, 0);
+                        printf("아직 구현 안 됨\n> ");
+                    }
+
+                    else
+                    {
+                        moveCursorUp(2, 1, 0);
+                        printf("'%s' is not a valid command.\n> ", cmd);
+                    }
+
+                    fflush(stdout);
+                }
+            }
+        }
+    }
 
 
     ////// MESSAGE COMMUNICATION LOOP //////
+    
+    // SET TIMEOUT OF read()
+    // https://stackoverflow.com/a/2939145
+    // 이렇게 하면 아예 소켓 옵션으로 read()에 타임아웃을 걸 수 있어 유용하다.
+    // 바로 위 setsockopt()과는 별개임!
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tr, sizeof(tr));
     
     //// 이때부터 글자 하나씩 입력받기 모드 시작.
     set_conio_terminal_mode();
@@ -867,19 +1124,24 @@ int main(int argc, char *argv[])
     // int bi = 0;     // buf string index
     // int ci = 0;     // cmd string index
 
+    int servmsg_printed = 0;
+
     while (1)
     {
-        // 이전 cmdcode값 저장
-        int cmdcode_prev = cmdcode;
-
         // RECEIVE MESSAGE
         // recv_msg()에서 read()를 실행하여 setsockopt으로 설정한 대기 시간만큼 기다린다.
-        if (recv_msg(&cmdcode, sender, message) < 0) {
+        // 였는데 보편성 위해 그냥 read()로 바꿈
+        if (read(sock, message, BUF_SIZE) < 0) {
             // printf("No message.\r\n");
         }
-        
+
         else
         {
+            char cmd_code[5] = {0,};
+            memcpy(&cmd_code, &message, sizeof(int));
+
+            cmdcode = atoi(cmd_code);
+
             if (cmdcode == HEARTBEAT_CMD_CODE)
             {
                 struct HeartBeatPacket hbp;
@@ -895,23 +1157,40 @@ int main(int argc, char *argv[])
                 write(sock, message, BUF_SIZE);
             }
 
-            else if (cmdcode == 1000 || cmdcode == 3000)
+            else if (cmdcode == SERVMSG_CMD_CODE || cmdcode == OPENCHAT_CMD_CODE || cmdcode == SINGLECHAT_CMD_CODE)
             {
                 // PRINT MSG AFTER REMOVING PREVIOUS LINES
-                if (!is_init) moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
-                else is_init = 0;
+                moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
+                if (is_init) { printf("\r\n"); is_init = 0; }
 
                 // CODE 1000: MESSAGE FROM SERVER
-                if (cmdcode == 1000)
+                if (cmdcode == SERVMSG_CMD_CODE)
                 {
                     // 이전 메시지도 서버 메시지일 경우 줄넘김 간격 하나 줄여줌
                     // 즉 클라이언트에서 서버로(그 반대도 포함) 전송자가 바뀐 경우에만 줄넘김 좀 더 넓혀 줌
-                    if (cmdcode_prev == 1000) moveCursorUp(1, 0, 0);
-                    printf("%s============ %s ============\r\n\r\n\r\n", cmdcode_prev == 1000 ? "" : "\r\n\r\n\r\n", message);
+                    if (servmsg_printed)
+                    {
+                        moveCursorUp(1, 1, 0);
+                    }
+                    else
+                    {
+                        printf("\r\n\n\n");
+                        servmsg_printed = 1;
+                    }
+                    printf("============ %s ============\r\n\n\n", &message[CMDCODE_SIZE + NAME_SIZE]);
                 }
 
-                // CODE 3000: MESSAGE FROM CLIENT
-                else printf("\r\n%s sent: %s\r\n", sender, message);
+                // CODE 3001: 개인 채팅
+                else
+                {
+                    if (servmsg_printed) servmsg_printed = 0;
+
+                    if (cmdcode == SINGLECHAT_CMD_CODE)
+                    {
+                        printf("\r\n%d (names 받아서 대체 필요) sent: %s\r\n", client_data[MEMBER_SRL].target, &message[CMDCODE_SIZE * 3]);
+                        fflush(stdout);
+                    }
+                }
 
                 prompt_printed = 0;
             }
@@ -974,13 +1253,9 @@ int main(int argc, char *argv[])
                         memset(cmd, 0, CMD_SIZE);
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
                         cmdmode = 0;
-							
+
 						//Modify
 						firstScene(); // 메인화면 다시 띄우기
-						// char k[10] = { 0, };
-						// scanf("%s", k);
-                        // transfer_list_data(k, clist, 1);
-						// printf("Command input : %s\n", k);//디버그용 임시코드
                     }
 
                     else
@@ -1206,15 +1481,25 @@ int main(int argc, char *argv[])
                         //
                         bp = transfer_list_data(buf, blist, 1);
 
-                        // SEND
-                        send_msg(3000, buf);
+                        //// SEND
 
-                        // READ (CREATE OUTPUT FROM SERVER MESSAGE)
-                        recv_msg(&cmdcode, sender, message);
-                        
+                        // send_msg(OPENCHAT_CMD_CODE, buf);    // original
+                        send_singlechat(buf);
+
+                        //// READ (CREATE OUTPUT FROM SERVER MESSAGE)
+
+                        // recv_msg(&cmdcode, sender, message);    // original
+
+                        memset(buf, 0, BUF_SIZE);
+                        read(sock, buf, BUF_SIZE);
+
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + lfcnt, 1, bp);
-                        // moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1);
-                        printf("\r\n%s sent: %s\r\n", sender, message);
+                        if (is_init) { printf("\r\n"); is_init = 0; }
+
+                        if (servmsg_printed) servmsg_printed = 0;
+
+                        // printf("\r\n%s sent: %s\r\n", sender, message); // original
+                        printf("\r\n%d (names 받아서 대체 필요) sent: %s\r\n", MEMBER_SRL, &buf[CMDCODE_SIZE * 3]);
 
                         global_curpos = 0;
 
@@ -1267,6 +1552,9 @@ int main(int argc, char *argv[])
 
                     else
                     {
+                        // MESSAGE TOO LONG
+                        if (blist->len > MSG_SIZE) break;
+
                         if (bp != blist->tail && bp->next->val == '\r') printf("%c", c);
                         else print_behind_cursor(blist, bp, c, 0, 0);
                         bp = list_insert(blist, bp, c);
