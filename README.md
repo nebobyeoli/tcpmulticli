@@ -40,6 +40,43 @@ Branch name | Pull request | Description
 **keyinput**  | [Keyboard input by character](https://github.com/nebobyeoli/tcpmulticli/pull/4) | `termios`를 이용한 사용자 정의 `kbhit()` 및 `getch()` 활성화 <br> 글자를 하나씩 입력받아 직접 할당하는 방식으로의 입력 구현 <br> 즉 `엔터` 없이도, 입력 `중의` 입력 버퍼를 직접 관리할 수 있도록 하는 작업
 **singles**  | [1 : 1 채팅 기반 구현](https://github.com/nebobyeoli/tcpmulticli/pull/11) | 개인 채팅 구현
 
+<!-- Message is concatenated via `sprintf()`.
+
+Example:
+```c
+// CREATE MESSAGE FOR write()
+// + 1 AND + 2 BELOW INDICATES LEAVING OUT [NULL] CHARACTERS
+// AS SEPARATORS TO DISTINGUISH FORMAT PARAMETERS ON read()
+
+/* sprintf()를 이용해,
+ * 한 개의 NULL 문자를 사이에 두고 char 배열에 작성하는 기법으로
+ * 각 메시지 데이터를 구분지어 저장한다.
+ */
+// APPEND CMDCODE
+sprintf(message, "%d", cmdcode);
+// APPEND NAME OF SENDER
+sprintf(&message[CMDCODE_SIZE + 1], "%s", sender);
+// APPEND MESSAGE
+sprintf(&message[CMDCODE_SIZE + NAME_SIZE + 2], "%s", msg);
+``` -->
+
+## Server log info
+
+```c
+// Output example
+```
+```txt
+Received from A [B] (C)
+
+<< HEARTBEAT at [t: %ld] from A [B] (C)
+```
+```c
+// t:   Time since server launch        [LONG INT] (time(0) 반환형)
+// A:   Client INDEX                    [INT]
+// B:   Client SOCKET                   [INT]
+// C:   Client NAME                     [CHAR*]
+```
+
 ## Cmd code significations
 
 #### 기본은 천의 자리 수와 백의 자리 수로 구분하는 것을 원칙으로 한다.
@@ -61,26 +98,6 @@ Name              | `cmdcode`      | `sender`    | `msg`
 ----------------- | -------------- | ----------- | ----------
 **Size constant** | `CMDCODE_SIZE` | `NAME_SIZE` | `BUF_SIZE`
 **Size**          | `4`            | `30`        | `1024 * n`
-
-<!-- Message is concatenated via `sprintf()`.
-
-Example:
-```c
-// CREATE MESSAGE FOR write()
-// + 1 AND + 2 BELOW INDICATES LEAVING OUT [NULL] CHARACTERS
-// AS SEPARATORS TO DISTINGUISH FORMAT PARAMETERS ON read()
-
-/* sprintf()를 이용해,
- * 한 개의 NULL 문자를 사이에 두고 char 배열에 작성하는 기법으로
- * 각 메시지 데이터를 구분지어 저장한다.
- */
-// APPEND CMDCODE
-sprintf(message, "%d", cmdcode);
-// APPEND NAME OF SENDER
-sprintf(&message[CMDCODE_SIZE + 1], "%s", sender);
-// APPEND MESSAGE
-sprintf(&message[CMDCODE_SIZE + NAME_SIZE + 2], "%s", msg);
-``` -->
 
 ## Nickname requisites
 

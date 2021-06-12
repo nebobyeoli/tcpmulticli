@@ -143,7 +143,7 @@ void sendAll(int clnt_cnt, int cmdcode, char *sender, char *msg, char *servlog)
         if (client[i] < 0 || names[i][0] == 0) continue;
 
         write(client[i], message, BUF_SIZE);
-        printf("Sent to client [%d] (%s)\r\n", client[i], names[i]);
+        printf("Sent to client %d [%d] (%s)\r\n", i, client[i], names[i]);
     }
 }
 
@@ -1319,7 +1319,7 @@ int main(int argc, char **argv)
                     if (cmdmode) moveCursorUp(MIN_ERASE_LINES, 1, 0);
                     else         moveCursorUp(MIN_ERASE_LINES + getLFcnt(blist), 1, bp);
 
-                    printf("Disconnected client [%d] (%s)\r\n", client[i], names[i]);
+                    printf("Disconnected client %d [%d] (%s)\r\n", i, client[i], names[i]);
                     printf("===================================\r\n");
                     fflush(0);
 
@@ -1359,7 +1359,7 @@ int main(int argc, char **argv)
                         if (cmdcode == OPENCHAT_CMD_CODE) msgoffset = CMDCODE_SIZE + NAME_SIZE;
                         else if (cmdcode == SINGLECHAT_CMD_CODE) msgoffset = CMDCODE_SIZE * 3;
                         
-                        printf("\r\nReceived from [%d] (%s): %s %s\r\n", client[i], names[i], buf, &buf[msgoffset]);
+                        printf("\r\nReceived from %d [%d] (%s): %s %s\r\n", i, client[i], names[i], buf, &buf[msgoffset]);
                     }
 
                     //
@@ -1459,7 +1459,7 @@ int main(int argc, char **argv)
                             memset(names[i], 0, NAME_SIZE);
                             memset(client_data[i].nick, 0, NAME_SIZE);
                             sprintf(names[i], "%s", &buf[CMDCODE_SIZE + 1]);
-                            printf("Set name of client [%d] as [%s]\r\n", client[i], names[i]);
+                            printf("Set name of client %d [%d] as [%s]\r\n", i, client[i], names[i]);
 
                             // SEND JOIN INFORMATION TO ALL CLIENTS
                             memset(message, 0, BUF_SIZE);
@@ -1519,7 +1519,7 @@ int main(int argc, char **argv)
 
                     else
                     {
-                        printf("Error reading cmdcode from [%d]!\r\n", client[i]);
+                        printf("Error reading cmdcode from %d [%d]!\r\n", i, client[i]);
                     }
                 }
 
