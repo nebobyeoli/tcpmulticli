@@ -290,7 +290,7 @@ void check_append_emojis(char *msg, char *mdest)
 
     // CAST TO INT FOR MEMORY LOCATION INDICATION
     // GET THE SIZE VALUE INBETWEEN
-    int inbet;
+    unsigned int inbet;
 
     // message and mdest ROLE SWAP
     int swap = 0;
@@ -304,6 +304,8 @@ void check_append_emojis(char *msg, char *mdest)
     // 실제 이모티콘을 dynamic array하게 저장
     char *tmp_emoji;
 
+    // ./emojis/ 경로 내 저장된 이모티콘 파일의 수만큼 반복한다
+    // 이 emojiCnt는 서버가 시작될 때 dirent를 이용해 도출되었다(사용 가능 emoji 정보 출력 부분).
     for (int i = 0; i < emojiCnt; i++)
     {
         // LENGTH of emoji DATA (2656, 1178, <...>)
@@ -319,6 +321,7 @@ void check_append_emojis(char *msg, char *mdest)
         strcat(cd, emojis[i].title);
         strcat(cd, ".txt");
 
+        // 연다
         fp = fopen(cd, "r");
         if (fp == NULL) { printf("Error opening file %s :(\r\n", cd); exit(1); }
 
@@ -333,20 +336,41 @@ void check_append_emojis(char *msg, char *mdest)
 
         fclose(fp);
 
+        // strstr는 문자열 내 문자열이 있는지 확인하고
+        // 있으면 그 sub 문자열이 등장하는 시작 메모리 위치를, 없으면 NULL(= 0)을 반환한다.
         index = strstr(swap ? mdest : message, TOKEN);
         
         if (index)
         {
             if (first) { for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n"); first = 0; }
 
+            // ㄴ은 니은이다
             printf("\r\n==============================================\r\n------------------------------------------\r\n%s\r\n\nㄴ==> Before swap", message, i, TOKEN);
 
+            // 이거 약간 불법 비슷하게 볼 수도 있겠다
+            // 일단 배열 자체를 int 치환하기 때문이다
+            // 으 하
             if (swap)
             {
+                // sub 문자열과 원본 문자열 메모리 위치의 차를 이용해
+                // 배열 index로 사용할 수 있는 시작 position을 구한다
                 inbet = (int)index - (int)mdest;
 
+                // 일단 복사한다
                 memcpy(message, mdest, inbet);
+
+                // 원본 배열 내, 아까 메모리 위치 차로 구한 position index 부터 실제 emoji를 삽입하고
+                // 그 뒤에 :emoji: 뒤의 나머지 문자열을 추가 삽입한다
+                // 배열 크기들을 잘 보고 조심만 하면 sprintf와 strcat가 은어를 감탄사로 사용하게 할 만큼 정말 편하다
+                // 역시 스트링
+                // 나머지 문자열 추가 삽입은 :emoji:의 크기, 즉 strlen(TOKEN)을 이용해
+                // 나머지 문자열의 시작 위치를 구해서 사용하면
+                // 된다
                 sprintf(&message[inbet], "\r\n%s\r\n%s", tmp_emoji, &mdest[inbet + strlen(TOKEN)]);
+
+                // 이제 다음 이모티콘 삽입에서의 역할 교환을 위해
+                // 원본 배열에 emoji 삽입된 배열을 복사해 준다
+                // 굳!
                 memcpy(mdest, message, MSG_SIZE);
 
                 printf("\r\n------------------------------------------\r\n%s\r\n\nㄴ==> After swap\r\n------------------------------------------\r\ni = %d, swapped %s\r\n======================================\r\n", message, i, TOKEN);
@@ -354,6 +378,8 @@ void check_append_emojis(char *msg, char *mdest)
                 swap = 0;
             }
             
+            // 위와 똑같은 내용이다 다만
+            // message와 mdest의 자리가 서로 바뀌었을 뿐이다
             else
             {
                 inbet = (int)index - (int)message;
