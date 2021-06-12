@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <time.h>
+#include <dirent.h>
 
 #include <termios.h>
 #include <unistd.h>
@@ -24,8 +25,8 @@
 
 //// 마지막에 아래 정리해서 아래 변수들 함수들 헤더랑 따로 만들어서 담을 것
 
-#define BUF_SIZE        1024 * 2    // 임시 크기(1024 * n): 수신 시작과 끝에 대한 cmdcode 추가 사용 >> MMS 수신 구현 전까지
-#define MSG_SIZE        2000
+#define BUF_SIZE        1024 * 4    // 임시 크기(1024 * n): 수신 시작과 끝에 대한 cmdcode 추가 사용 >> MMS 수신 구현 전까지
+#define MSG_SIZE        4000
 #define CMDCODE_SIZE    4           // cmdcode의 크기
 #define CMD_SIZE        20          // cmdmode에서의 명령어 최대 크기
 #define NAME_SIZE       30          // 닉네임 최대 길이
@@ -55,6 +56,8 @@
 #define OPENCHAT_CMD_CODE       3000
 #define SINGLECHAT_CMD_CODE     3001
 
+#define EMOJI_VARIANT_MAX   30      // 최대 사용 가능 이모티콘 (txt) 수
+#define EMOJI_TITLELEN_MAX  10      // 이모티콘(명령명) 최대 길이
 
 int global_curpos = 0;
 
@@ -70,8 +73,13 @@ char pp_message[] = "Input message(CTRL+C to quit):\r\n";
 // command mode message, 즉 cmd mode에서의 입력 문구
 char cmd_message[] = "Enter command(ESC to quit):\r\n> ";
 
-// 'emoji' 문자열 임시 내장 - 파일입출력으로의 사용 전까지
-char myh[] = "⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢠⣴⣾⣿⣶⣶⣆⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀\r\n⢀⢀⢀⣀⢀⣤⢀⢀⡀⢀⣿⣿⣿⣿⣷⣿⣿⡇⢀⢀⢀⢀⣤⣀⢀⢀⢀⢀⢀\r\n⢀⢀ ⣶⢻⣧⣿⣿⠇ ⢸⣿⣿⣿⣷⣿⣿⣿⣷⢀⢀⢀⣾⡟⣿⡷⢀⢀⢀⢀\r\n⢀⢀⠈⠳⣿⣾⣿⣿⢀⠈⢿⣿⣿⣷⣿⣿⣿⣿⢀⢀⢀⣿⣿⣿⠇⢀⢀⢀⢀\r\n⢀⢀⢀⢀⢿⣿⣿⣿⣤⡶⠺⣿⣿⣿⣷⣿⣿⣿⢄⣤⣼⣿⣿⡏⢀⢀⢀⢀⢀\r\n⢀⢀⢀⢀⣼⣿⣿⣿⠟⢀⢀⠹⣿⣿⣿⣷⣿⣿⣎⠙⢿⣿⣿⣷⣤⣀⡀⢀⢀\r\n⢀⢀⢀ ⢸⣿⣿⣿⡿⢀⢀⣤⣿⣿⣿⣷⣿⣿⣿⣄⠈⢿⣿⣿⣷⣿⣿⣷⡀⢀\r\n⢀⢀⢀⣿⣿⣿⣿⣷⣀⣀⣠⣿⣿⣿⣿⣷⣿⣷⣿⣿⣷⣾⣿⣿⣿⣷⣿⣿⣿⣆\r\n⣿⣿⠛⠋⠉⠉⢻⣿⣿⣿⣿⡇⡀⠘⣿⣿⣿⣷⣿⣿⣿⠛⠻⢿⣿⣿⣿⣿⣷⣦\r\n⣿⣿⣧⡀⠿⠇⣰⣿⡟⠉⠉⢻⡆⠈⠟⠛⣿⣿⣿⣯⡉⢁⣀⣈⣉⣽⣿⣿⣿⣷\r\n⡿⠛⠛⠒⠚⠛⠉⢻⡇⠘⠃⢸⡇⢀⣤⣾⠋⢉⠻⠏⢹⠁⢤⡀⢉⡟⠉⡙⠏⣹\r\n⣿⣦⣶⣶⢀⣿⣿⣿⣷⣿⣿⣿⡇⢀⣀⣹⣶⣿⣷⠾⠿⠶⡀⠰⠾⢷⣾⣷⣶⣿\r\n⣿⣿⣿⣿⣇⣿⣿⣿⣷⣿⣿⣿⣇⣰⣿⣿⣷⣿⣿⣷⣤⣴⣶⣶⣦⣼⣿⣿⣿⣷";
+int emojiCnt = 0;
+
+struct
+{
+    char title[EMOJI_TITLELEN_MAX];
+    unsigned int len;   // return type of ftell
+} emojis[EMOJI_VARIANT_MAX];
 
 struct sClient
 {
@@ -262,6 +270,135 @@ void moveCursorUp(int lines, int eraselast, list_node_t* list_ptr)
     printf("\r");
 
     // 출력 버퍼 비움
+    fflush(stdout);
+}
+
+// EMBEDS EMOJIS TO MSG, REPLACING :[emojicommand]:
+// CURRENTLY: CAN ONLY USE ONE EMOJI PER EMOJI TYPE
+void check_append_emojis(char *msg, char *mdest)
+{
+    // EMOJI EMBEDDER
+    // CURRENTLY SUPPORTS: EMBEDDED :myh: AND :bigbird:
+
+    char message[MSG_SIZE];
+    memcpy(message, msg, MSG_SIZE);
+    memset(mdest, 0, MSG_SIZE);
+
+    // TYPE *CHAR BECAUSE OF MSG TYPE,
+    // BUT USED INT-CASTED FOR GETTING SIZE USING MEMORY LOCATION COMPARISONS
+    char *index;
+
+    // CAST TO INT FOR MEMORY LOCATION INDICATION
+    // GET THE SIZE VALUE INBETWEEN
+    unsigned int inbet;
+
+    // message and mdest ROLE SWAP
+    int swap = 0;
+
+    // emoji SWAP 로그 출력에서의 초기 줄넘김 삽입 위한
+    int first = 1;
+
+    // 이모티콘 txt 하나씩 읽음
+    FILE *fp;
+
+    // 실제 이모티콘을 dynamic array하게 저장
+    char *tmp_emoji;
+
+    // ./emojis/ 경로 내 저장된 이모티콘 파일의 수만큼 반복한다
+    // 이 emojiCnt는 서버가 시작될 때 dirent를 이용해 도출되었다(사용 가능 emoji 정보 출력 부분).
+    for (int i = 0; i < emojiCnt; i++)
+    {
+        // LENGTH of emoji DATA (2656, 1178, <...>)
+        int LEN = emojis[i].len;
+
+        // :myh:, :bigbird:, <:...:>
+        char TOKEN[EMOJI_TITLELEN_MAX + 2 + 1] = ":";
+        strcat(TOKEN, emojis[i].title);
+        strcat(TOKEN, ":");
+
+        // fopen()에 넣을 경로
+        char cd[EMOJI_TITLELEN_MAX + 9 + 1] = "./emojis/";
+        strcat(cd, emojis[i].title);
+        strcat(cd, ".txt");
+
+        // 연다
+        fp = fopen(cd, "r");
+        if (fp == NULL) { printf("Error opening file %s :(\r\n", cd); exit(1); }
+
+        // 읽을 emoji.txt의 길이만큼 할당
+        tmp_emoji = (char*)malloc((LEN + 1) * sizeof(char));
+        if (tmp_emoji == NULL) { printf("malloc error on %s :(\r\n", cd); exit(1); }
+
+        // emoji.txt의 데이터 대입
+        size_t newLen = fread(tmp_emoji, sizeof(char), LEN, fp);
+        if (ferror(fp) != 0) { fputs("Error reading file %s :(\r\n", cd); exit(1); }
+        else tmp_emoji[newLen] = 0;
+
+        fclose(fp);
+
+        // strstr는 문자열 내 문자열이 있는지 확인하고
+        // 있으면 그 sub 문자열이 등장하는 시작 메모리 위치를, 없으면 NULL(= 0)을 반환한다.
+        while (index = strstr(swap ? mdest : message, TOKEN))
+        {
+            if (first) { for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n"); first = 0; }
+
+            // ㄴ은 니은이다
+            printf("\r\n==============================================\r\n------------------------------------------\r\n%s\r\n\nㄴ==> Before swap", message, i, TOKEN);
+
+            // 이거 약간 불법 비슷하게 볼 수도 있겠다
+            // 일단 배열 자체를 int 치환하기 때문이다
+            // 으 하
+            if (swap)
+            {
+                // sub 문자열과 원본 문자열 메모리 위치의 차를 이용해
+                // 배열 index로 사용할 수 있는 시작 position을 구한다
+                inbet = (int)index - (int)mdest;
+
+                // 일단 복사한다
+                memcpy(message, mdest, inbet);
+
+                // 원본 배열 내, 아까 메모리 위치 차로 구한 position index 부터 실제 emoji를 삽입하고
+                // 그 뒤에 :emoji: 뒤의 나머지 문자열을 추가 삽입한다
+                // 배열 크기들을 잘 보고 조심만 하면 sprintf와 strcat가 은어를 감탄사로 사용하게 할 만큼 정말 편하다
+                // 역시 스트링
+                // 나머지 문자열 추가 삽입은 :emoji:의 크기, 즉 strlen(TOKEN)을 이용해
+                // 나머지 문자열의 시작 위치를 구해서 사용하면
+                // 된다
+                sprintf(&message[inbet], "\r\n%s\r\n%s", tmp_emoji, &mdest[inbet + strlen(TOKEN)]);
+
+                // 이제 다음 이모티콘 삽입에서의 역할 교환을 위해
+                // 원본 배열에 emoji 삽입된 배열을 복사해 준다
+                // 굳!
+                memcpy(mdest, message, MSG_SIZE);
+
+                printf("\r\n------------------------------------------\r\n%s\r\n\nㄴ==> After swap\r\n------------------------------------------\r\ni = %d, swapped %s\r\n======================================\r\n", message, i, TOKEN);
+
+                swap = 0;
+            }
+            
+            // 위와 똑같은 내용이다 다만
+            // message와 mdest의 자리가 서로 바뀌었을 뿐이다
+            else
+            {
+                inbet = (int)index - (int)message;
+
+                memcpy(mdest, message, inbet);
+                sprintf(&mdest[inbet], "\r\n%s\r\n%s", tmp_emoji, &message[inbet + strlen(TOKEN)]);
+                memcpy(message, mdest, MSG_SIZE);
+
+                printf("\r\n------------------------------------------\r\n%s\r\n\nㄴ==> After swap\r\n------------------------------------------\r\ni = %d, swapped %s\r\n==============================================\r\n", message, i, TOKEN);
+
+                swap = 1;
+            }
+        }
+
+        // 공간 사용 후 비움
+        memset(tmp_emoji, 0, LEN);
+        free(tmp_emoji);
+    }
+
+    if (!first) for (int i = 0; i < MIN_ERASE_LINES + PP_LINE_SPACE; i++) printf("\r\n");
+
     fflush(stdout);
 }
 
@@ -752,7 +889,11 @@ int main(int argc, char **argv)
         printf("Usage: %s <PORT>\n", argv[0]);
         exit(1);
     }
-    
+
+    // https://stackoverflow.com/a/34550798
+    DIR *dirp = opendir("./emojis");
+    static struct dirent *dir;
+
     time_t inittime;    // 서버가 시작된 시각
     time_t lasttime;    // 마지막 heartbeat 시각
     time_t now;         // 실시간 시각 (메인 반복문에서 매 순간 갱신)
@@ -813,7 +954,7 @@ int main(int argc, char **argv)
     int on = 1;
 
     serv_sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (serv_sock == -1) perror_exit("socket() error");
+    if (serv_sock == -1) perror_exit("socket() error!\n");
 
     memset(&serv_addr, 0x00, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
@@ -833,10 +974,10 @@ int main(int argc, char **argv)
     setsockopt(serv_sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void*)&join_addr, sizeof(join_addr));
 
     state = bind(serv_sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-    if (state == -1) perror_exit("bind() error");
+    if (state == -1) perror_exit("bind() error!\n");
 
     state = listen(serv_sock, 5);
-    if (state == -1) perror_exit("listen() error");
+    if (state == -1) perror_exit("listen() error!\n");
 
     clnt_sock = serv_sock;
 
@@ -854,7 +995,38 @@ int main(int argc, char **argv)
     FD_ZERO(&readfds);
     FD_SET(serv_sock, &readfds);
 
-    printf("\nStarted TCP Server.\n\n");
+    printf("\n\033[1;4;33mSTARTED TCP SERVER.\033[0m\n");
+
+    // GET EMOJI NAMES.
+    if (dirp)
+    {
+        FILE *fp;
+
+        printf("\nUsable emojis (in ascending order):\n\n\033[1m");
+
+        while ((dir = readdir(dirp)) != NULL)
+        {
+            if (strstr(dir->d_name, ".txt"))
+            {
+                memcpy(emojis[emojiCnt].title, dir->d_name, strlen(dir->d_name) - 4);
+
+                printf("  - %s\n", emojis[emojiCnt].title);
+
+                char cd[] = "./emojis/";
+                strcat(cd, dir->d_name);
+
+                fp = fopen(cd, "r");
+                fseek(fp, 0L, SEEK_END);
+                emojis[emojiCnt].len = (int)ftell(fp);
+                fclose(fp);
+
+                emojiCnt++;
+            }
+        }
+        closedir(dirp);
+    }
+
+    printf("\033[0m\nemojiCnt: %d\n\n", emojiCnt);
 
     fflush(0);
     
@@ -1173,26 +1345,17 @@ int main(int argc, char **argv)
                         bp = transfer_list_data(buf, blist, 1);
 
                         // CHECK FOR EMOJIS
-                        // 아래에 대한 구체적 주석은 emojis 브랜치의 check_append_emojis()에 작성할 것.
-                        // 아래 내용은 해당 함수의 사용으로 대체될 것.
                         char mdest[MSG_SIZE], umdest[MSG_SIZE] = "\r\nMESSAGE FROM SERVER:\r\n";
-                        char *index = strstr(buf, ":myh:");
-                        if (index)
-                        {
-                            // CAST TO INT FOR MEMORY LOCATION INDICATION
-                            // GET THE SIZE VALUE INBETWEEN
-                            int inbet = (int)index - (int)buf;
-                            
-                            memcpy(mdest, buf, inbet);
-                            sprintf(&mdest[inbet], "\r\n%s\r\n%s", myh, &buf[inbet + sizeof(":myh:") - 1]);
-                            memcpy(&umdest[strlen(umdest)], mdest, strlen(mdest));  // but also only while strlen(mdest) < MSG_SIZE - 24.
-                        }
+                        check_append_emojis(buf, mdest);
+
+                        memcpy(&umdest[strlen(umdest)], mdest, strlen(mdest));  // but also only while strlen(mdest) < MSG_SIZE - 24.
+                        if (mdest[0]) strcat(umdest, "\r\n");
 
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + lfcnt, 1, bp);
 
                         // SEND
-                        if (index)  sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, umdest, mdest);
-                        else        sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, buf, buf);
+                        if (mdest[0])   sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, umdest, mdest);
+                        else            sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, buf, buf);
 
                         global_curpos = 0;
                         
@@ -1468,36 +1631,31 @@ int main(int argc, char **argv)
 
                     else if (cmdcode == OPENCHAT_CMD_CODE || cmdcode == SINGLECHAT_CMD_CODE)
                     {
-                        char msg[BUF_SIZE], mdest[BUF_SIZE];
+                        // NEW BUFFER FOR USAGE AS PARAMETER FOR sendAll()
+                        // 이모티콘 삽입 위해, 추출된 실질 메시지 저장함
+                        char msg[BUF_SIZE];
 
+                        // EXTRACT MESSAGE FROM RECV BUFFER
                         if (cmdcode == OPENCHAT_CMD_CODE) strcpy(msg, &buf[CMDCODE_SIZE + NAME_SIZE]);
-                        else strcpy(msg, &buf[CMDCODE_SIZE * 3]);
+                        else if (cmdcode == SINGLECHAT_CMD_CODE) strcpy(msg, &buf[CMDCODE_SIZE * 3]);
                         
                         // CHECK FOR EMOJIS
-                        // 아래에 대한 구체적 주석은 emojis 브랜치의 check_append_emojis()에 작성할 것.
-                        // 아래 내용은 해당 함수의 사용으로 대체될 것.
-                        char *index = strstr(msg, ":myh:");
-                        if (index)
-                        {
-                            // CAST TO INT FOR MEMORY LOCATION INDICATION
-                            // GET THE SIZE VALUE INBETWEEN
-                            int inbet = (int)index - (int)msg;
-
-                            memcpy(mdest, msg, inbet);
-                            sprintf(&mdest[inbet], "\r\n%s\r\n%s", myh, &msg[inbet + sizeof(":myh:") - 1]);
-                            printf("%s\r\n", mdest);
-                            fflush(stdout);
-                        }
+                        char mdest[BUF_SIZE];
+                        check_append_emojis(msg, mdest);
 
                         memset(message, 0, BUF_SIZE);
 
                         if (cmdcode == OPENCHAT_CMD_CODE)
                         {
+
                             // SEND RECEIVED MESSAGE TO ALL CLIENTS
-                            sendAll(clnt_cnt, OPENCHAT_CMD_CODE, names[i], index ? mdest : msg, NULL);
+                            if (mdest[0]) sendAll(clnt_cnt, OPENCHAT_CMD_CODE, names[i], mdest, mdest);
+                            else          sendAll(clnt_cnt, OPENCHAT_CMD_CODE, names[i], msg, NULL);
                         }
                         else
                         {
+                            if (mdest[0]) memcpy(&buf[CMDCODE_SIZE * 3], mdest, BUF_SIZE);
+
                             char tmp[5] = {0,};
                             memcpy(&tmp, &buf[CMDCODE_SIZE * 2], sizeof(int));
                             int target = atoi(tmp);
@@ -1505,7 +1663,7 @@ int main(int argc, char **argv)
                             printf("Singlechat: %d [%d] ==> %d [%d]", i, client[i], target, client[target]);
                             fflush(stdout);
 
-                            // 온 거 그대로 전달 <...>
+                            // 온 거 그대로 전달 <이모티콘 있으면 위 check_append_emojis에서 추가되었음>
                             write(client[i], buf, BUF_SIZE);
                             write(client[target], buf, BUF_SIZE);
                         }
