@@ -128,11 +128,7 @@ void sendAll(int clnt_cnt, int cmdcode, char *sender, char *msg, char *servlog)
     int i;
     char message[BUF_SIZE];
     memset(message, 0, BUF_SIZE);
-    
-    /* sprintf()를 이용해,
-     * 한 개의 NULL 문자를 사이에 두고 char 배열에 작성하는 기법으로
-     * 각 메시지 데이터를 구분지어 저장한다.
-     */
+
     // APPEND CMDCODE
     sprintf(message, "%d", cmdcode);
     // APPEND NAME OF SENDER
@@ -274,7 +270,6 @@ void moveCursorUp(int lines, int eraselast, list_node_t* list_ptr)
 }
 
 // EMBEDS EMOJIS TO MSG, REPLACING :[emojicommand]:
-// CURRENTLY: CAN ONLY USE ONE EMOJI PER EMOJI TYPE
 void check_append_emojis(char *msg, char *mdest)
 {
     // EMOJI EMBEDDER
