@@ -1124,11 +1124,10 @@ int main(int argc, char *argv[])
     // int bi = 0;     // buf string index
     // int ci = 0;     // cmd string index
 
+    int servmsg_printed = 0;
+
     while (1)
     {
-        // 이전 cmdcode값 저장
-        int cmdcode_prev = cmdcode;
-
         // RECEIVE MESSAGE
         // recv_msg()에서 read()를 실행하여 setsockopt으로 설정한 대기 시간만큼 기다린다.
         // 였는데 보편성 위해 그냥 read()로 바꿈
@@ -1169,15 +1168,28 @@ int main(int argc, char *argv[])
                 {
                     // 이전 메시지도 서버 메시지일 경우 줄넘김 간격 하나 줄여줌
                     // 즉 클라이언트에서 서버로(그 반대도 포함) 전송자가 바뀐 경우에만 줄넘김 좀 더 넓혀 줌
-                    if (cmdcode_prev == SERVMSG_CMD_CODE) moveCursorUp(1, 1, 0);
-                    printf("%s============ %s ============\r\n\r\n\r\n", cmdcode_prev == SERVMSG_CMD_CODE ? "" : "\r\n\r\n\r\n", &message[CMD_SIZE + NAME_SIZE]);
+                    if (servmsg_printed)
+                    {
+                        moveCursorUp(1, 1, 0);
+                    }
+                    else
+                    {
+                        printf("\r\n\n\n");
+                        servmsg_printed = 1;
+                    }
+                    printf("============ %s ============\r\n\n\n", &message[CMDCODE_SIZE + NAME_SIZE]);
                 }
 
                 // CODE 3001: 개인 채팅
-                else if (cmdcode == SINGLECHAT_CMD_CODE)
+                else
                 {
-                    printf("\r\n%d (names 받아서 대체 필요) sent: %s\r\n", client_data[MEMBER_SRL].target, &message[CMDCODE_SIZE * 3]);
-                    fflush(stdout);
+                    if (servmsg_printed) servmsg_printed = 0;
+
+                    if (cmdcode == SINGLECHAT_CMD_CODE)
+                    {
+                        printf("\r\n%d (names 받아서 대체 필요) sent: %s\r\n", client_data[MEMBER_SRL].target, &message[CMDCODE_SIZE * 3]);
+                        fflush(stdout);
+                    }
                 }
 
                 prompt_printed = 0;
@@ -1483,6 +1495,8 @@ int main(int argc, char *argv[])
 
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + lfcnt, 1, bp);
                         if (is_init) { printf("\r\n"); is_init = 0; }
+
+                        if (servmsg_printed) servmsg_printed = 0;
 
                         // printf("\r\n%s sent: %s\r\n", sender, message); // original
                         printf("\r\n%d (names 받아서 대체 필요) sent: %s\r\n", MEMBER_SRL, &buf[CMDCODE_SIZE * 3]);
