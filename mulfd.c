@@ -1175,7 +1175,7 @@ int main(int argc, char **argv)
                         // CHECK FOR EMOJIS
                         // 아래에 대한 구체적 주석은 emojis 브랜치의 check_append_emojis()에 작성할 것.
                         // 아래 내용은 해당 함수의 사용으로 대체될 것.
-                        char mdest[BUF_SIZE], umdest[BUF_SIZE] = "\r\nMESSAGE FROM SERVER:\r\n";
+                        char mdest[MSG_SIZE], umdest[MSG_SIZE] = "\r\nMESSAGE FROM SERVER:\r\n";
                         char *index = strstr(buf, ":myh:");
                         if (index)
                         {
@@ -1185,7 +1185,7 @@ int main(int argc, char **argv)
                             
                             memcpy(mdest, buf, inbet);
                             sprintf(&mdest[inbet], "\r\n%s\r\n%s", myh, &buf[inbet + sizeof(":myh:") - 1]);
-                            strcat(umdest, mdest);
+                            memcpy(&umdest[strlen(umdest)], mdest, strlen(mdest));  // but also only while strlen(mdest) < MSG_SIZE - 24.
                         }
 
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + lfcnt, 1, bp);
