@@ -1235,10 +1235,10 @@ int main(int argc, char **argv)
                         bp = transfer_list_data(buf, blist, 1);
 
                         // CHECK FOR EMOJIS
-                        char mdest[BUF_SIZE], umdest[] = "\r\nMESSAGE FROM SERVER:\r\n";
+                        char mdest[MSG_SIZE], umdest[MSG_SIZE] = "\r\nMESSAGE FROM SERVER:\r\n";
                         check_append_emojis(buf, mdest);
 
-                        strcat(umdest, mdest);
+                        memcpy(&umdest[strlen(umdest)], mdest, strlen(mdest));  // but also only while strlen(mdest) < MSG_SIZE - 24.
                         if (mdest[0]) strcat(umdest, "\r\n");
 
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + lfcnt, 1, bp);
