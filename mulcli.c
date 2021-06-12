@@ -19,14 +19,17 @@
 /* 이중 연결 리스트 api
  * https://github.com/clibs/list
  */
-#include "list.h"
+#include "list/list.h"
 
-//// 나중에 필요하다 싶으면 아래 변수들 함수들 헤더랑 따로 만들어서 담을 것
+//// 마지막에 아래 정리해서 아래 변수들 함수들 헤더랑 따로 만들어서 담을 것
 
 #define BUF_SIZE        1024 * 4    // 임시 크기(1024 * n): 수신 시작과 끝에 대한 cmdcode 추가 사용 >> MMS 수신 구현 전까지
+#define MSG_SIZE        2000
 #define CMDCODE_SIZE    4           // cmdcode의 크기
 #define CMD_SIZE        20          // cmdmode에서의 명령어 최대 크기
 #define NAME_SIZE       30          // 닉네임 최대 길이
+#define MAX_SOCKS       100         // 최대 연결 가능 클라이언트 수
+#define ACCEPT_MSG_SIZE  5        // 1 + sizeof(int)
 
 #define RECV_TIMEOUT_SEC    0
 #define RECV_TIMEOUT_USEC   50000   // 1000000 usec = 1 sec
@@ -35,6 +38,37 @@
 
 #define MIN_ERASE_LINES     1       // 각 출력 사이의 줄 간격 - 앞서 출력된 '입력 문구'를 포함하여, 다음 메시지 출력 전에 지울 줄 수
 #define PP_LINE_SPACE       3       // 최솟값: 1  // 출력되는 메시지들과 '입력 문구' 사이 줄 간격
+
+int global_curpos = 0;
+
+#define SERVMSG_CMD_CODE    1000
+
+#define HEARTBEAT_CMD_CODE  1500
+#define HEARTBEAT_REQ_CODE  1501
+#define HEARTBEAT_STR_CODE  1502
+
+#define SINGLECHAT_REQ_CODE     1600
+#define SINGLECHAT_RESP_CODE    1601
+#define CHANCHAT_REQ_CODE       1602
+#define CHANCHAT_RESP_CODE      1603
+
+#define SETNAME_CMD_CODE        2000
+
+#define OPENCHAT_CMD_CODE       3000
+#define SINGLECHAT_CMD_CODE     3001
+
+int MEMBER_SRL = -1;    // -1: 미지정
+
+/* 실제 입력 관리: 이중 리스트 api 사용하였다.
+ * 엔터를 쳤을 때 blist 또는 clist의 데이터를 buf[]로 저장하고,
+ * 해당 리스트를 초기화한다.
+ */
+list_t *blist;     // buf_list
+list_node_t *bp;   // buf_list_pointer
+
+list_t *clist;     // cmd_list
+list_node_t *cp;   // cmd_list_pointer
+
 
 // 지정된 멀티캐스팅 주소
 char mulcast_addr[] = "239.0.100.1";
@@ -48,11 +82,38 @@ char pp_message[] = "Input message(CTRL+C to quit):\r\n";
 // command mode message, 즉 cmd mode에서의 입력 문구
 char cmd_message[] = "Enter command(ESC to quit):\r\n> ";
 
+struct sClient
+{
+    int logon_status; // logon 되어있으면 1, 아니면 0
+    char nick[NAME_SIZE];
+    int chat_status;          //idle = 0, personal_chat = 1, channel_chat = 2
+    int target;              //타겟 번호. 개인채팅이면 타겟 member_srl, 단체면 channel
+    int is_chatting;        // 채팅 중인지
+    time_t last_heartbeat_time; //마지막 heartbeat을 받은 시간
+} client_data[MAX_SOCKS];
+// member_srl은 client_data[i] 에서 i이다.
+
+struct HeartBeatPacket
+{
+    int cmd_code;
+    int member_srl;
+    int chat_status;
+    int target;
+    int is_chatting;
+};
+
 // 함수명 변경: error_handling() >> perror_exit()
 void perror_exit(char *message)
 {
     printf("%s", message);
     exit(0);
+}
+
+// integer to ascii
+void itoa(int i, char *st)
+{
+    sprintf(st, "%d", i);
+    return;
 }
 
 // MESSAGE SENDER
@@ -62,10 +123,35 @@ void send_msg(int cmdcode, char *msg)
     memset(message, 0, BUF_SIZE);
 
     sprintf(message, "%d", cmdcode);
-    sprintf(&message[CMDCODE_SIZE + 1], "%s", nname);
-    sprintf(&message[CMDCODE_SIZE + NAME_SIZE + 2], "%s", msg);
+    sprintf(&message[CMDCODE_SIZE], "%s", nname);
+    sprintf(&message[CMDCODE_SIZE + NAME_SIZE], "%s", msg);
 
     write(sock, message, BUF_SIZE);
+}
+
+void send_singlechat(char *message)
+{
+    char result[BUF_SIZE] = {0,};
+    memset(&result, 0, BUF_SIZE);
+
+    char tmp[5] = {0,};
+    int offset = 0;
+
+    itoa(SINGLECHAT_CMD_CODE, tmp);
+    memcpy(&result, &tmp, sizeof(int));
+    offset = sizeof(int);
+
+    itoa(MEMBER_SRL, tmp);
+    memcpy(&result[offset], &tmp, sizeof(int));
+    offset += sizeof(int);
+
+    itoa(client_data[MEMBER_SRL].target, tmp);
+    memcpy(&result[offset], &tmp, sizeof(int));
+    offset += sizeof(int);
+
+    memcpy(&result[offset], message, strlen(message));
+
+    write(sock, result, BUF_SIZE);
 }
 
 // MESSAGE RECEIVER: ALSO SETS PARAMETER VALUES TO 0
@@ -74,25 +160,102 @@ void send_msg(int cmdcode, char *msg)
  * int *cmdcode: cmdcode값을 직접 수정해 주기 때문에 포인터로 받는다.
  * 각 크기 변수를 배열 인덱스로 활용해, 메시지 데이터들을 인자로 주어진 각 변수에 저장한다.
  */
+// NULL 문자 삽입 없앰
 int recv_msg(int *cmdcode, char *sender, char *message)
 {
     char buf[BUF_SIZE];
     int rresult;
 
     memset(sender, 0, NAME_SIZE);
-    memset(buf, 0, BUF_SIZE);
+    memset(buf, 0, MSG_SIZE);
     memset(message, 0, BUF_SIZE);
 
     if ((rresult = read(sock, buf, BUF_SIZE)) < 0) return rresult;
 
-    // RETRIEVE CMDCODE
-    *cmdcode = atoi(buf);
-    // RETRIEVE NAME OF SENDER
-    sprintf(sender, "%s", &buf[CMDCODE_SIZE + 1]);
-    // RETRIEVE MESSAGE
-    sprintf(message, "%s", &buf[CMDCODE_SIZE + NAME_SIZE + 2]);
+    char tmp[5] = {0,};
+    int offset = 0;
+
+    memcpy(tmp, buf, sizeof(int));
+    offset = sizeof(int);
+    *cmdcode = atoi(tmp);
+
+    memcpy(sender, &buf[offset], sizeof(sender));
+    offset += sizeof(sender);
+    
+    memcpy(message, &buf[offset], sizeof(message));
 
     return rresult;
+}
+
+void send_singlechat_request(int member_srl)
+{
+    char pass[CMDCODE_SIZE * 2] = { 0, };
+
+    sprintf(pass, "%d", SINGLECHAT_REQ_CODE);
+    sprintf(&pass[CMDCODE_SIZE], "%d", member_srl);
+    write(sock, pass, 4 * 2);
+}
+
+void send_singlechat_response(int member_srl, int accepted)
+{
+    char pass[CMDCODE_SIZE * 3] = { 0, };
+
+    sprintf(pass, "%d", SINGLECHAT_RESP_CODE);
+    sprintf(&pass[CMDCODE_SIZE], "%d", member_srl);
+    sprintf(&pass[CMDCODE_SIZE * 2], "%d", accepted);
+    write(sock, pass, 4 * 3);
+}
+
+
+// GET LINEFEED COUNT OF BUFFER LIST
+/*
+ * 한 버퍼 리스트에 포함된 줄넘김의 수 구함
+ * it's always better to NOT modify the "original" source.
+ : adding list->(unsigned int lfcnt) in this case.
+ */
+int getLFcnt(list_t* list)
+{
+    list_node_t* node;
+    list_iterator_t* it = list_iterator_new(list, LIST_HEAD);
+
+    int lfcnt = 0;
+    while (node = list_iterator_next(it)) if (node->val == '\n') lfcnt++;
+    list_iterator_destroy(it);
+
+    return lfcnt;
+}
+
+int getLFcnt_from_node(list_node_t* list_ptr, int dirFrom)
+{
+    list_node_t* node;
+    list_iterator_t* it = list_iterator_new_from_node(list_ptr, dirFrom);
+
+    int lfcnt = 0;
+    while (node = list_iterator_next(it)) if (node->val == '\n') lfcnt++;
+    list_iterator_destroy(it);
+
+    return lfcnt;
+}
+
+// PRINT DATA AFTER MODIFIED NODE BEHIND CURSOR
+/*
+ * 노드 추가/삭제 후 [노드->next]의 값들을 커서 뒤로 모두 출력
+ */
+void print_behind_cursor(list_t* list, list_node_t* list_ptr, char firstchar, char lastchar, int lastcharcnt)
+{
+    list_node_t *node = list_ptr;
+    int restlen = 1;
+
+    if (firstchar) printf("%c", firstchar);
+    while (node = node->next)
+    {
+        if (node->val == '\r') break;
+        printf("%c", node->val);
+        restlen++;
+        if (node == list->tail) break;
+    }
+    for (int i = 0; i < lastcharcnt; i++) printf("%c", lastchar);
+    printf(" \033[%dD", restlen + lastcharcnt);
 }
 
 // NOTE. this is for LINUX
@@ -114,8 +277,11 @@ int recv_msg(int *cmdcode, char *sender, char *message)
  * \b       커서를 1칸 앞으로 옮긴다.
  *          goto 1 char b ack
  */
-void moveCursorUp(int lines, int eraselast)
+void moveCursorUp(int lines, int eraselast, list_node_t* list_ptr)
 {
+    // 버퍼 리스트 포인터가 인자로 주어진 경우 **위로** 지우기 전에 **밑으로** 먼저 내린다.
+    if (list_ptr) printf("\033[%dB", getLFcnt_from_node(list_ptr, LIST_HEAD));
+
     // eraselast가 설정된 경우, 커서를 윗줄로 올리기 전에 커서가 있던 줄을 지우고 간다.
     if (eraselast) printf("\33[2K");
 
@@ -129,15 +295,188 @@ void moveCursorUp(int lines, int eraselast)
     fflush(stdout);
 }
 
-// LIST DATA TO BUFFER
-/* 인수들
+// USAGE OF HORIZONTAL CURSOR MOVEMENT - BY BLOCKS
+/*
+ * CTRL + MOVEKEY : 단어 단위로 커서 이동
+ * CTRL + ERASEKEY: 단어 단위로 버퍼 데이터 지움
+ *
+ * 장점:
+ *   일단 보고 쓰기 확 편해짐.
+ *   공백 순서 같은 거 수정하고 싶을 때 8곳에서 수정해 주지 않아도 됨.
  * 
- * char   *buf      : 리스트 데이터를 저장할 배열
- * list_t *list     : 읽을 리스트
- * int    *list_len : 리스트 길이 저장 변수
- * int     emptylist: 리스트 초기화 여부
+ * int modifying: 주어진 list_t *list의 데이터를 함께 수정하는지 여부
+ *   0: CTRL + MOVEKEY
+ *   1: CTRL + ERASEKEY
+ * 
+ * int dirFrom:
+ *   리스트의 dirFrom의 반대까지 확인
+ *   원래 dirTo였으나 다른 리스트 사용 함수들과의 통일성을 위해 dirFrom으로 다시 뒤집음.
+ *   0: LIST_HEAD
+ *   1: LIST_TAIL
+ * 
+ * 이를 이용한 코드 구조:
+ *   dirFrom ? [HEAD 방향으로 확인하는 경우] : [TAIL 방향으로 확인하는 경우]
+ * 
+ * tp != (dirFrom ? list->head : list->tail):
+ * 원래 list_node_t *end = (dirFrom ? list->head : list->tail)로 초기조건 변수를 만들어 저장하려 했으나
+ * 각 반복문이 매 바퀴를 돌 때마다 list->tail값이 변화되기 때문에
+ * end가 가리킬 위치를 매번 갱신해 주지 않으면, 줄의 맨 끝에서 [CTRL + DELETE]를 눌렀을 때
+ * Segmentation fault (core dumped)가 발생한다.
  */
-void transfer_list_data(char *buf, list_t *list, int *list_len, int emptylist)
+list_node_t* moveCursorColumnblock(list_t *list, list_node_t *p, char *printstr, int modifying, int dirFrom)
+{
+    int i = 0;
+    list_node_t *tp = p;
+
+    while (tp != (dirFrom ? list->head : list->tail) && (dirFrom ? tp->val != '\n' : tp->next->val != '\r') && (dirFrom ? tp->val == ' ' : tp->next->val == ' '))
+    {
+        if (printstr) { printf("%s", printstr); tp = (dirFrom ? tp->prev : tp->next); }
+        if (modifying) list_remove(list, tp->next);
+        i++;
+    }
+
+    while (tp != (dirFrom ? list->head : list->tail) && (dirFrom ? tp->val != '\n' : tp->next->val != '\r') && (dirFrom ? tp->val != ' ' : tp->next->val != ' '))
+    {
+        if (printstr) { printf("%s", printstr); tp = (dirFrom ? tp->prev : tp->next); }
+        if (modifying) list_remove(list, tp->next);
+        i++;
+    }
+
+    if (modifying) print_behind_cursor(list, tp, 0, ' ', i);
+
+    return tp;
+}
+
+int getCurposFromListptr(list_t* list, list_node_t* list_ptr)
+{
+    int curpos = 0;
+
+    list_node_t* node;
+    list_iterator_t* it;
+
+    node = list_ptr;
+    
+    it = list_iterator_new_from_node(node, LIST_TAIL);
+
+    while (node = list_iterator_next(it))
+    {
+        if (node == list->head) break;
+        if (node->val == '\n') break;
+        curpos++;
+    }
+    list_iterator_destroy(it);
+    
+    // list_ptr 에서 그 전 마지막 줄넘김까지의 거리
+    return curpos;
+}
+
+// 줄넘김 들어간 MODIFYING 있을 때, 즉 !cmdmode일 때 사용.
+// 그냥 전체 다 뽑아 버린다
+void eraseInputSpace(list_t* list, list_node_t* list_ptr)
+{
+    printf("\033[%dB", getLFcnt_from_node(list_ptr, LIST_HEAD));
+    moveCursorUp(getLFcnt(list), 1, list_ptr);
+}
+
+void reprintList(list_t* list, list_node_t* list_ptr, int curpos)
+{
+    list_node_t *node;
+    list_iterator_t *it;
+
+    // 뽑아.
+    // 출력 끝난 후에 커서 위치: 맨 아랫줄.
+    it = list_iterator_new(list, LIST_HEAD);
+    while (node = list_iterator_next(it)) printf("%c", node->val);
+    list_iterator_destroy(it);
+
+    int lastlf = 0, ptrpos = 0;
+
+    // 커서 뒤에 줄넘김이 있을 때마다 한 줄씩 올려준다.
+    int lfcnt = getLFcnt_from_node(list_ptr, LIST_HEAD);
+    if (lfcnt) printf("\033[%dA", lfcnt);
+
+    // 커서가 줄넘김한 직후, 즉 해당 줄의 맨 앞 위치일 때
+    // 위 반복문의 if (node->val == '\n')에서 한 번 더 올라간 커서를 다시 내려 준다
+    if (list_ptr->val == '\n') printf("\033[B");
+
+    printf("\r");
+    if (curpos) printf("\033[%dC", curpos);
+}
+
+// PRINT UNTIL CURSOR TO END OF LINE
+// >> PRINT UNTIL CURSOR TO END OF BUFFER LIST
+/*
+ * 리스트를 돌며 줄넘김 전까지 char *printstr를 출력하기
+ *
+ * int dirFrom:
+ *   리스트의 dirFrom에서 출발
+ *   0: LIST_HEAD: 리스트의 tail 방향으로 반복문 돌아감
+ *   1: LIST_TAIL: 리스트의 head 방향으로 반복문 돌아감
+ */
+void printUntilEnd(list_t* buflist, list_node_t* list_ptr, char *printstr, int modifying, int dirFrom)
+{
+    list_node_t *node;
+
+    node = list_ptr;
+
+    if (dirFrom == LIST_HEAD)
+    {
+        while (node != buflist->tail && node->next->val != '\n')
+        {
+            printf("%s", printstr);
+            node = node->next;
+        }
+    }
+
+    else  // dirFrom LIST_TAIL
+    {
+        while (node != buflist->head && node->val != '\n')
+        {
+            printf("%s", printstr);
+            node = node->prev;
+        }
+    }
+}
+
+// CHECK LIST IS "LITERALLY" EMPTY
+/*
+ * 버퍼 리스트에 실제 데이터 값이 들어 있는지 확인
+ *
+ * 다음의 경우에 1 반환:
+ *   리스트가 비어 있음
+ *   리스트의 모든 노드의 val 값이 0, 공백, \r, \n 중 하나임
+ * 
+ * 리스트에 실제 의미 있는 값이 들어가 있으면 1 반환.
+ */
+int list_is_empty(list_t* list)
+{
+    if (list->head == list->tail) return 1;
+
+    list_node_t *node;
+    list_iterator_t *it = list_iterator_new(list, LIST_HEAD);
+
+    while (node = list_iterator_next(it))
+    {
+        if (node->val != 0 && node->val != ' ' && node->val != '\r' && node->val != '\n')
+        {
+            list_iterator_destroy(it);
+            return 0;
+        }
+    }
+
+    list_iterator_destroy(it);
+    return 1;
+}
+
+// LIST DATA TO BUFFER
+/* 
+ * 인수들
+ * 
+ * char     *buf      : 리스트 데이터를 저장할 배열
+ * list_t   *list     : 읽을 리스트
+ * int       emptylist: 리스트 초기화 여부
+ */
+list_node_t* transfer_list_data(char *buf, list_t *list, int emptylist)
 {
     list_node_t *node;
     list_iterator_t *it = list_iterator_new(list, LIST_HEAD);
@@ -148,17 +487,66 @@ void transfer_list_data(char *buf, list_t *list, int *list_len, int emptylist)
     // buf 배열에 저장!
     while (node = list_iterator_next(it))
     {
-        sprintf(&buf[offset++], "%c", node -> val);
-        
-        // buf 배열에 저장 완료된 node값은 free해 준다.
-        if (emptylist) list_remove(list, node);
+        if (node->val == 0) continue;
+        sprintf(&buf[offset++], "%c", node->val);
     }
-
-    //// 리스트 내용 복사 완료 ////
-    
     list_iterator_destroy(it);
 
-    if (emptylist) *list_len = 0;
+    //// 리스트 내용 복사 완료 ////
+
+    if (emptylist)
+    {
+        list_destroy(list);
+        list = list_new();
+        
+        list_rpush(list, list_node_new(0));
+    }
+
+    return list->head;
+}
+
+// INSERT VALUE IN THE MIDDLE OF A BUFFER LIST
+/* 
+ * 리스트 중간에 삽입한다
+ * 
+ * 버그:
+ *   문자 4글자 이하, 그 4글자들 사이에
+ *   [ALT + ENTER] & [BACKSPACE] 3번 이상 치고 넘겼을 때
+ *   Segmentation fault (core dumped) 현상 발생
+ * 
+ * 해결
+ *   (list->len)++
+ * 
+ * list/list.c 내 디버깅 코드:
+ * void list_destroy(list_t *self)에서
+ * 
+ * // for core dump debugging
+ * // printf("[not yet, len: %d]\r\n", len);
+ * 
+ + 보니까 bllen, cllen 따로 만들지 않아도 list_t* 구조체에
+ | len이라는 내장 변수 있어서 그냥 그거 쓰면 되었음
+ V 
+ : list->len
+ * 
+ * not incrementing it turned out to be the f reason of the f core dumping
+ * incrementing it in [if (list_ptr == list->tail)] ALSO turns out to result in core dumping
+ * 'cause list->len is already incremented IN list_rpush
+ * .
+ * .
+ * [언짢으면서도 유익한 경험이었 다]
+ */
+list_node_t* list_insert(list_t* list, list_node_t* list_ptr, char newvalue)
+{
+    list_node_t *newnode = list_node_new(newvalue);
+
+    if (list_ptr == list->tail) list_rpush(list, newnode);
+    else {
+        (newnode->next = list_ptr->next)->prev = newnode;
+        (newnode->prev = list_ptr)->next = newnode;
+        list->len ++;
+    }
+
+    return newnode;
 }
 
 // https://stackoverflow.com/a/448982
@@ -222,13 +610,12 @@ int kbhit()
  */
 int getch()
 {
-    // 어쩌다 kbhit()까지 확인했는데도 read()할 거 없으면 그냥 그거 반환하기로
-    int r;
-
     // 키 하나 눌렀을 때 반환되는 정수들
     // 추가 키 사용할 때마다 그 키의 반환 개수에 따라 배열 길이 늘려서 사용할 수 있음!
-    char c[5] = { 0, };
+    char c[7] = { 0, };
 
+    // 어쩌다 kbhit()까지 확인했는데도 read()할 거 없으면 그냥 그거 반환하기로
+    int r;
     if ((r = read(0, &c, sizeof(c))) < 0) {
         return r;
     }
@@ -261,24 +648,138 @@ int getch()
                 case 4:
                     // DEL KEY
                     // '128'로 지정했음
-                    if (c[0] == 27 && c[1] == 91 && c[2] == 51 && c[3] == 126) return 128;
+                    if (!strcmp(&c[1], "[3~")) return 128;
                     break;
+                
+                // CTRL + KEY
+                case 6:
+                    // CTRL + ARROWS
+                    if (c[5] > 64 && c[5] < 69) return -1 * c[5] + 48;
 
+                    // CTRL + DELETE
+                    if (!strcmp(&c[1], "[3;5~")) return -128;
+                    break;
+                
+                // 그 외의 (더 많은 정수들을 반환하는) COMMAND KEY 조합
                 // 더 쓸 거 있으면 추가할 것
+                // 원래 키의 음수값 * 10으로 사용하도록 지정했음
+                // 그니까 먹지 마셈
                 default:
+                    return -10 * c[strlen(c) - 1];
                     break;
             }
         }
+
+        else
+            return c[0];
     }
 }
 
+void heartbeatSerialize(char *message, struct HeartBeatPacket *hbp)
+{
+    char result[BUF_SIZE] = {0,};
+    memset(&result, 0, BUF_SIZE);
+
+    char tmp[5] = {0,};
+    int offset = 0;
+
+    itoa(HEARTBEAT_CMD_CODE, tmp);
+    memcpy(&result, &tmp, sizeof(int));
+    offset = sizeof(int);
+
+    itoa(hbp->member_srl, tmp);
+    memcpy(&result[offset], &tmp, sizeof(int));
+    offset += sizeof(int);
+
+    itoa(hbp->chat_status, tmp);
+    memcpy(&result[offset], &tmp, sizeof(int));
+    offset += sizeof(int);
+
+    itoa(hbp->target, tmp);
+    memcpy(&result[offset], &tmp, sizeof(int));
+    offset += sizeof(int);
+
+    itoa(hbp->is_chatting, tmp);
+    memcpy(&result[offset], &tmp, sizeof(int));
+
+    memcpy(message, &result, BUF_SIZE); // 최종 메세지 저장
+}
+
+void clientListProcess(char* message)
+{
+    char tmp[5]={0,};
+    int offset = 0;
+
+    while(1)
+    {
+        memcpy(&tmp, &message[offset], sizeof(int));
+        offset += sizeof(int);
+        int cmd_code = atoi(tmp);
+
+        if(cmd_code == HEARTBEAT_STR_CODE) // Heartbeat가 있을 경우
+        {
+            memcpy(&tmp, &message[offset], sizeof(int));
+            offset += sizeof(int);
+            int member_srl = atoi(tmp);
+
+            memcpy(&client_data[member_srl].nick, &message[offset], sizeof(client_data[member_srl].nick));
+            offset += sizeof(client_data[member_srl].nick);
+
+            memcpy(&tmp, &message[offset], sizeof(int));
+            offset += sizeof(int);
+            client_data[member_srl].logon_status = atoi(tmp);
+
+            memcpy(&tmp, &message[offset], sizeof(int));
+            offset += sizeof(int);
+            client_data[member_srl].chat_status = atoi(tmp);
+
+            memcpy(&tmp, &message[offset], sizeof(int));
+            offset += sizeof(int);
+            client_data[member_srl].target = atoi(tmp);
+
+            memcpy(&tmp, &message[offset], sizeof(int));
+            offset += sizeof(int);
+            client_data[member_srl].is_chatting = atoi(tmp);
+        } else break;
+    }
+}
+
+
+//Modify
+void firstScene()//First Scene->메인화면 출력
+{
+	printf("============================ Welcome To Chating =======================================\r\n");
+	for (int i = 0; i < 3; i++) printf("\r\n");
+	printf("<User List>\r\n");
+	printf("- 개인채팅 사용방법 : (~~~~) 입력");
+	//유저리스트 받아서 적는부분
+
+	//
+	for (int i = 0; i < 3; i++) printf("\r\n");
+	printf("<Group chatting>\n");
+	printf("- 그룹채팅 사용방법 : c(채널번호)      ex)c12 : 12번 채널\r\n");
+	for (int i = 0; i < 3; i++) printf("\r\n");
+	printf("=======================================================================================\r\n");
+}
+
+
+
 int main(int argc, char *argv[])
 {
-    if (argc != 3) {
+    if (argc != 3)
+    {
         printf("Usage : %s <IP> <PORT>\n", argv[0]);
         exit(1);
     }
     
+    int namelen;                    // 자기 자신의 닉네임 길이 (닉네임 설정 때 사용)
+    struct ip_mreq join_addr;       // 멀티캐스트 주소 저장
+    struct sockaddr_in serv_addr;   // 서버 주소 저장
+    
+    struct  timeval tr;     // timeval_receive
+    fd_set  readfds;        // CONTROLS SELECT [once set: read-only]
+    fd_set  allfds;         // SELECT에 의해 변화됨
+
     /* buf[]와 message[]의 용도 규칙은 따로 없으나
      * 보통 입력 저장 및 임시 저장소는 buf[],
      * NULL칸으로 분리된 형식의 수신/전송용 메시지는 message[]를 사용.
@@ -288,26 +789,14 @@ int main(int argc, char *argv[])
     char message[BUF_SIZE];
     char cmd[CMD_SIZE];
 
-    /* 실제 입력 관리: 이중 리스트 api 사용.
-     * 엔터를 쳤을 때 blist 또는 clist의 데이터를 buf[]로 저장하고,
-     * 해당 리스트를 초기화한다.
-     * 
-     * bllen, cllen은 각 지정 리스트에서의 노드(입력된 char)의 수를 의미한다.
-     * 길이 확인용 변수로 실제 삽입/삭제 작업에는 쓰이지 않는다. (!= list_iterator_t *it)
-     */
-    list_t *blist = list_new();     // buf_list
-    int bllen = 0;                  // buf_list_len
+    blist = list_new();
+    list_rpush(blist, list_node_new(0));    // blist->HEAD
+    bp = blist->head;
 
-    list_t *clist = list_new();     // cmd_list
-    int cllen = 0;                  // cmd_list_len
+    clist = list_new();
+    list_rpush(clist, list_node_new(0));    // clist->HEAD
+    cp = clist->head;
 
-    struct  timeval tr;     // timeval_receive
-    fd_set  readfds;        // CONTROLS SELECT
-
-    int namelen;                    // 자기 자신의 닉네임 길이 (닉네임 설정 때 사용)
-    struct ip_mreq join_addr;       // 멀티캐스트 주소 저장
-    struct sockaddr_in serv_addr;   // 서버 주소 저장
-    
     /* 필요할 때만 '입력 문구'를 출력하도록 함.
      * 코드 진행 이후 '입력 문구'의 출력이 필요할 때는 prompt_printed = 1 실행
      */
@@ -338,12 +827,6 @@ int main(int argc, char *argv[])
     join_addr.imr_interface.s_addr = htonl(INADDR_ANY);
     setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void*)&join_addr, sizeof(join_addr));
 
-    // SET TIMEOUT OF read()
-    // https://stackoverflow.com/a/2939145
-    // 이렇게 하면 아예 소켓 옵션으로 read()에 타임아웃을 걸 수 있어 유용하다.
-    // 바로 위 setsockopt()과는 별개임!
-    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tr, sizeof(tr));
-    
     if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) == -1)
         perror_exit("connect() error!");
     
@@ -362,50 +845,56 @@ int main(int argc, char *argv[])
     {
         printf("NICKNAME: ");
 
-        fgets(buf, BUF_SIZE, stdin);
+        fgets(buf, MSG_SIZE, stdin);
 
         // 마지막 줄넘김 없애기: '\n' 문자까지 대기 후 (int)0으로 대체
         for (namelen = 0; buf[namelen] != '\n'; namelen++);
         buf[namelen] = 0;
         
         // 그냥 엔터만 넘긴 경우는 무시한다.
-        if (namelen < 1) moveCursorUp(1, 0);
+        if (namelen < 1) moveCursorUp(1, 0, 0);
 
         //// 입력받은 버퍼에서 닉네임 조건 충족 여부를 먼저 확인한 후에 서버로 넘긴다.
 
         else if (buf[0] == ' ')
         {
-            moveCursorUp(warned ? 2 : 1, 0);
+            moveCursorUp(warned ? 2 : 1, 0, 0);
             printf("Name must not start with a SPACE character...\n");
             if (!warned) warned = 1;
         }
         
         else if (namelen > NAME_SIZE)
         {
-            moveCursorUp(warned ? 2 : 1, 0);
+            moveCursorUp(warned ? 2 : 1, 0, 0);
             printf("Name must be shorter than %d characters!\n", NAME_SIZE);
             if (!warned) warned = 1;
         }
 
         else
         {
-            sprintf(message, "2000");
+            sprintf(message, "%d", SETNAME_CMD_CODE);
             sprintf(&message[CMDCODE_SIZE + 1], "%s", buf);
             
             write(sock, message, CMDCODE_SIZE + 1 + namelen);
 
             memset(message, 0, BUF_SIZE);
-            read(sock, message, 2);
+            read(sock, message, ACCEPT_MSG_SIZE);
 
-            if (atoi(message) == 0) {
-                moveCursorUp(warned ? 2 : 1, 0);
+            if (message[0] == '0')
+            {
+                moveCursorUp(warned ? 2 : 1, 0, 0);
                 printf("Sorry, but the name %s is already taken.\n", buf);
                 if (!warned) warned = 1;
             }
             
-            else {
+            else
+            {
                 printf("Name accepted.\n");
                 memcpy(nname, buf, NAME_SIZE);
+
+                MEMBER_SRL = atoi(&message[1]);
+                printf("\nMEMBER_SRL: %d\n", MEMBER_SRL);
+                
                 break;
             }
         }
@@ -417,7 +906,213 @@ int main(int argc, char *argv[])
 
     fflush(0);
 
+    //// FIRST 메인 화면 출력
+
+	firstScene();
+    printf("\n\n\n%s", cmd_message);
+    fflush(stdout);
+
+    FD_ZERO(&readfds);
+    FD_SET(0, &readfds);
+    FD_SET(sock, &readfds);
+    // printf("[[%d]]\n\n\n\n", sock);
+
+    int waiting_for_server = 0;
+    int waiting_for_target = 0;
+    int waiting_for_me = 0;
+
+    int req_from = -1;
+    int req_to   = -1;
+
+    while (1)
+    {
+        allfds = readfds;
+
+        if (select(sock + 1, &allfds, 0, 0, 0))
+        {
+            if (FD_ISSET(sock, &allfds))
+            {
+                memset(buf, 0, BUF_SIZE);
+                read(sock, buf, BUF_SIZE);
+
+                char cmd_code[5] = {0,};
+                memcpy(&cmd_code, &buf, sizeof(int));
+                int cmdcode = atoi(cmd_code);
+
+                if (cmdcode == HEARTBEAT_CMD_CODE)
+                {
+                    struct HeartBeatPacket hbp;
+                    hbp.cmd_code = HEARTBEAT_CMD_CODE;
+                    hbp.member_srl = 0; // @todo 서버로부터 받아온 member_srl을 넣기
+                    hbp.chat_status = 1;
+                    hbp.target = 2;
+                    hbp.is_chatting = 1;
+
+                    char message[BUF_SIZE] = {0,};
+                    heartbeatSerialize(message, &hbp);
+
+                    write(sock, message, BUF_SIZE);
+                }
+
+                else if (cmdcode == SINGLECHAT_REQ_CODE)
+                {
+                    req_from = atoi(&buf[4]);
+
+                    moveCursorUp(1, 1, 0);
+                    printf("Client %d (클라정보 nick[i]) requested a private chat. Accept? [y/n]:\n> ", req_from);
+                    
+                    fflush(0);
+
+                    waiting_for_me = 1;
+                }
+
+                else if (cmdcode == SINGLECHAT_RESP_CODE)
+                {
+                    if (waiting_for_server)
+                    {
+                        waiting_for_server = 0;
+
+                        moveCursorUp(1, 1, 0);
+
+                        if (atoi(&buf[4 * 2]))  // Is existing client
+                        {
+                            printf("%d is an existing client. Waiting for response...\n", req_to);
+                            fflush(0);
+
+                            waiting_for_target = 1;
+                        }
+
+                        else
+                        {
+                            printf("%d is not an existing client.\n> ", req_to);
+                            fflush(0);
+                        }
+                    }
+
+                    else if (waiting_for_target)
+                    {
+                        waiting_for_target = 0;
+
+                        int accepted = atoi(&buf[4 * 2]);
+                        if (accepted)
+                        {
+                            moveCursorUp(0, 1, 0);
+                            printf("%d (클라정보 nick[i]) accepted the chat request.\n", req_to);
+                            fflush(0);
+
+                            client_data[MEMBER_SRL].target = req_to;
+                            client_data[req_to].target = MEMBER_SRL;
+
+                            // 이제 채팅할 수 있다.
+                            break;
+                        }
+
+                        else
+                        {
+                            moveCursorUp(1, 1, 0);
+                            printf("%d (클라정보 nick[i]) declined the chat request.\n> ", req_to);
+                            fflush(0);
+                        }
+                    }
+                }
+            }
+
+            if (FD_ISSET(0, &allfds))
+            {
+                memset(cmd, 0, sizeof(cmd));
+                fgets(cmd, sizeof(cmd), stdin);
+                cmd[strlen(cmd) - 1] = 0;   // 마지막 줄넘김 제거
+
+                if (waiting_for_me)
+                {
+                    waiting_for_me = 0;
+
+                    if (cmd[0] == 'y' || cmd[0] == 'Y')
+                    {
+                        moveCursorUp(1, 1, 0);
+
+                        send_singlechat_response(req_from, 1);
+                        
+                        client_data[MEMBER_SRL].target = req_from;
+                        client_data[req_from].target = MEMBER_SRL;
+                        printf("Accepted chat request.\n");
+
+                        // 이제 채팅할 수 있다.
+                        break;
+                    }
+                    else
+                    {
+                        moveCursorUp(2, 1, 0);
+
+                        send_singlechat_response(req_from, 0);
+
+                        printf("Declined chat request.\n> ");
+                    }
+
+                    fflush(stdout);
+                }
+
+                else if (!waiting_for_target)
+                {
+                    //// 명령어에 따른 초기 동작 실행
+
+                    // 숫자로 시작하면
+                    if (cmd[0] > 47 && cmd[0] < 58)
+                    {
+                        if (strlen(cmd) > 2)
+                        {
+                            moveCursorUp(2, 0, 0);
+                            printf("\033[1;33mNi de \033[4;7mCRAZY\033[0;1;33m ma?\033[0m\n> ");
+                            fflush(0);
+                            continue;
+                        }
+
+                        req_to = atoi(cmd);
+
+                        // ignore request to SELF
+                        if (req_to == MEMBER_SRL)
+                        {
+                            moveCursorUp(2, 0, 0);
+                            printf("\033[1;33m호구짓 하지 마쇼!!\033[0m\n> ");
+                            fflush(0);
+                            continue;
+                        }
+                        
+                        send_singlechat_request(req_to);
+
+                        moveCursorUp(2, 1, 0);
+                        printf("Requested chat with client %d. Waiting for response...\n", req_to);
+
+                        waiting_for_server = 1;
+                    }
+
+                    // 'c'로 시작하면
+                    else if (cmd[0] == 'c')
+                    {
+                        moveCursorUp(2, 1, 0);
+                        printf("아직 구현 안 됨\n> ");
+                    }
+
+                    else
+                    {
+                        moveCursorUp(2, 1, 0);
+                        printf("'%s' is not a valid command.\n> ", cmd);
+                    }
+
+                    fflush(stdout);
+                }
+            }
+        }
+    }
+
+
     ////// MESSAGE COMMUNICATION LOOP //////
+    
+    // SET TIMEOUT OF read()
+    // https://stackoverflow.com/a/2939145
+    // 이렇게 하면 아예 소켓 옵션으로 read()에 타임아웃을 걸 수 있어 유용하다.
+    // 바로 위 setsockopt()과는 별개임!
+    setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tr, sizeof(tr));
     
     //// 이때부터 글자 하나씩 입력받기 모드 시작.
     set_conio_terminal_mode();
@@ -429,39 +1124,73 @@ int main(int argc, char *argv[])
     // int bi = 0;     // buf string index
     // int ci = 0;     // cmd string index
 
+    int servmsg_printed = 0;
+
     while (1)
     {
-        // 이전 cmdcode값 저장
-        int cmdcode_prev = cmdcode;
-
         // RECEIVE MESSAGE
         // recv_msg()에서 read()를 실행하여 setsockopt으로 설정한 대기 시간만큼 기다린다.
-        if (recv_msg(&cmdcode, sender, message) < 0) {
+        // 였는데 보편성 위해 그냥 read()로 바꿈
+        if (read(sock, message, BUF_SIZE) < 0) {
             // printf("No message.\r\n");
         }
-        
+
         else
         {
-            if (cmdcode == 1500) {
-                write(sock, "1500", CMDCODE_SIZE);
+            char cmd_code[5] = {0,};
+            memcpy(&cmd_code, &message, sizeof(int));
+
+            cmdcode = atoi(cmd_code);
+
+            if (cmdcode == HEARTBEAT_CMD_CODE)
+            {
+                struct HeartBeatPacket hbp;
+                hbp.cmd_code = HEARTBEAT_CMD_CODE;
+                hbp.member_srl = 0; // @todo 서버로부터 받아온 member_srl을 넣기
+                hbp.chat_status = 1;
+                hbp.target = 2;
+                hbp.is_chatting = 1;
+
+                char message[BUF_SIZE] = {0,};
+                heartbeatSerialize(message, &hbp);
+
+                write(sock, message, BUF_SIZE);
             }
 
-            if (cmdcode == 1000 || cmdcode == 3000) {
+            else if (cmdcode == SERVMSG_CMD_CODE || cmdcode == OPENCHAT_CMD_CODE || cmdcode == SINGLECHAT_CMD_CODE)
+            {
                 // PRINT MSG AFTER REMOVING PREVIOUS LINES
-                if (!is_init) moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1);
-                else is_init = 0;
+                moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
+                if (is_init) { printf("\r\n"); is_init = 0; }
 
                 // CODE 1000: MESSAGE FROM SERVER
-                if (cmdcode == 1000)
+                if (cmdcode == SERVMSG_CMD_CODE)
                 {
                     // 이전 메시지도 서버 메시지일 경우 줄넘김 간격 하나 줄여줌
                     // 즉 클라이언트에서 서버로(그 반대도 포함) 전송자가 바뀐 경우에만 줄넘김 좀 더 넓혀 줌
-                    if (cmdcode_prev == 1000) moveCursorUp(1, 0);
-                    printf("%s============ %s ============\r\n\r\n\r\n", cmdcode_prev == 1000 ? "" : "\r\n\r\n\r\n", message);
+                    if (servmsg_printed)
+                    {
+                        moveCursorUp(1, 1, 0);
+                    }
+                    else
+                    {
+                        printf("\r\n\n\n");
+                        servmsg_printed = 1;
+                    }
+                    printf("============ %s ============\r\n\n\n", &message[CMDCODE_SIZE + NAME_SIZE]);
                 }
 
-                // CODE 3000: MESSAGE FROM CLIENT
-                else printf("\r\n%s sent: %s\r\n", sender, message);
+                // CODE 3001: 개인 채팅
+                else
+                {
+                    if (servmsg_printed) servmsg_printed = 0;
+
+                    if (cmdcode == SINGLECHAT_CMD_CODE)
+                    {
+                        printf("\r\n%d (names 받아서 대체 필요) sent: %s\r\n", client_data[MEMBER_SRL].target, &message[CMDCODE_SIZE * 3]);
+                        fflush(stdout);
+                    }
+                }
 
                 prompt_printed = 0;
             }
@@ -492,16 +1221,12 @@ int main(int argc, char *argv[])
             int c = getch();
             
             // cmdmode 여부에 따라 다른 리스트와 버퍼 배열 사용.
-            /* message : 입력 리스트 blist, 리스트 노드 수 bllen, 버퍼 배열 buf 
-             * cmdmode : 입력 리스트 clist, 리스트 노드 수 cllen, 버퍼 배열 cmd
+            /* message : 입력 리스트 blist, 리스트 노드 수 blist->len, 버퍼 배열 buf 
+             * cmdmode : 입력 리스트 clist, 리스트 노드 수 clist->len, 버퍼 배열 cmd
+             * 현재로서 cmdmode에서 줄넘김은 사용하지 않는 것으로 지정.
              */
             switch (c)
             {
-                // note: TO-DOS
-                // mulfd에서의 키 입력 방식에 맞춰 switch(c) 내부 내용
-                // 갱신해 주어야 함
-                // <...>
-
                 // PRESSED CTRL + C
                 // 99 & 037
                 case 3:
@@ -510,7 +1235,9 @@ int main(int argc, char *argv[])
 
                     close(sock);
 
-                    moveCursorUp(PP_LINE_SPACE, 0);
+                    if (cmdmode) moveCursorUp(PP_LINE_SPACE, 1, 0);
+                    else         moveCursorUp(PP_LINE_SPACE + getLFcnt(blist), 1, bp);
+
                     printf("\r\nClosed client.");
                     for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n");
 
@@ -524,13 +1251,16 @@ int main(int argc, char *argv[])
                     {
                         // cmdmode에서 나갈 때
                         memset(cmd, 0, CMD_SIZE);
-                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1);
+                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
                         cmdmode = 0;
+
+						//Modify
+						firstScene(); // 메인화면 다시 띄우기
                     }
 
                     else
                     {
-                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 0);
+                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + getLFcnt(blist), 1, bp);
                         cmdmode = 1;
                     }
 
@@ -538,17 +1268,97 @@ int main(int argc, char *argv[])
                     break;
                 }
 
-                // 방향키까지 고려하게 되면 리스트 구조체 써야 함
-                // 뭐 나중에 쓸수도 있지만
-                // 쓰는 게 나을 수도 있겠지만.
-                // 아마도 나중엔 쓰는 게 나을 듯.
-                // 
-                // 쓸거임
-                case 17: case 18: case 19: case 20:
+                // UP ARROW [↑]
+                case 17:
                 {
-                    // UP, DOWN, RIGHT, LEFT
-                    // please don't enable the arrow keys  yet
+                    // printf("UP");
+                    break;
+                }
 
+                // DOWN ARROW [↓]
+                case 18:
+                {
+                    // printf("DOWN");
+                    break;
+                }
+
+                // LEFT ARROW [←]
+                case 20:
+                {
+                    if (cmdmode && cp != clist->head)
+                    {
+                        printf("\033[D");
+                        cp = cp->prev;
+                    }
+
+                    else if (bp != blist->head)
+                    {
+                        if (bp->val == '\n')
+                        {
+                            printf("\033[A");
+                            bp = bp->prev->prev;
+                            printUntilEnd(blist, bp, "\033[C", 0, LIST_TAIL);
+                        }
+
+                        else
+                        {
+                            printf("\033[D");
+                            bp = bp->prev;
+                        }
+                    }
+
+                    break;
+                }
+
+                // RIGHT ARROW [→]
+                case 19:
+                {
+                    if (bp != blist->tail)
+                    {
+                        if (bp->next->val == '\r')
+                        {
+                            printf("\033[B\r");
+                            bp = bp->next->next;
+                        }
+
+                        else
+                        {
+                            printf("\033[C");
+                            bp = bp->next;
+                        }
+                    }
+                    break;
+                }
+
+                // CTRL + LEFT ARROW [←]
+                case -20:
+                {
+                    if (cmdmode)    cp = moveCursorColumnblock(clist, cp, "\b", 0, LIST_TAIL);
+                    else            bp = moveCursorColumnblock(blist, bp, "\b", 0, LIST_TAIL);
+                    break;
+                }
+
+                // CTRL + RIGHT ARROW [→]
+                case -19:
+                {
+                    if (cmdmode)    cp = moveCursorColumnblock(clist, cp, "\033[C", 0, LIST_HEAD);
+                    else            bp = moveCursorColumnblock(blist, bp, "\033[C", 0, LIST_HEAD);
+                    break;
+                }
+
+                // PRESSED CTRL + BACKSPACE
+                case 8:
+                {
+                    if (cmdmode)    cp = moveCursorColumnblock(clist, cp, "\b", 1, LIST_TAIL);
+                    else            bp = moveCursorColumnblock(blist, bp, "\b", 1, LIST_TAIL);
+                    break;
+                }
+
+                // PRESSED CTRL + DELETE
+                case -128:
+                {
+                    if (cmdmode)    moveCursorColumnblock(clist, cp, 0, 1, LIST_HEAD);
+                    else            moveCursorColumnblock(blist, bp, 0, 1, LIST_HEAD);
                     break;
                 }
 
@@ -556,67 +1366,36 @@ int main(int argc, char *argv[])
                 case 127:
                 {
                     // cmdmode에서는 줄넘김 안 쓰는 걸로 가정.
-                    if (cmdmode && cllen > 0)
+                    if (cmdmode && cp != clist->head)
                     {
-                        printf("\b \b");
-                        list_rpop(clist);
-                        cllen--;
+                        cp = cp->prev;
+                        list_remove(clist, cp->next);
+                        print_behind_cursor(clist, cp, '\b', 0, 0);
                     }
 
                     // default (message) mode
-                    else if (bllen > 0)
+                    else if (bp != blist->head)
                     {
-                        if (blist -> tail -> val == '\n')
+                        // 지울 문자가 줄넘김일 때
+                        if (bp->val == '\n')
                         {
-                            printf("\033[A");
-                            list_rpop(blist);
-                            list_rpop(blist);
-                            bllen -= 2;
+                            int curpos = getCurposFromListptr(blist, bp->prev->prev);
+                            eraseInputSpace(blist, bp);
 
-                            // move cursor right
-                            // iterate through list
-                            list_node_t *node = blist -> tail;
-                            while (node -> val != '\n') {
-                                printf("\033[C");
-                                if (node == blist -> head) break;
-                                node = node -> prev;
-                            }
+                            bp = bp->prev->prev;
+                            list_remove(blist, bp->next);
+                            list_remove(blist, bp->next);
+
+                            reprintList(blist, bp, curpos);
                         }
                         
+                        // 아닐 때 (단일 문자 삭제)
                         else
                         {
-                            printf("\b \b");
-                            list_rpop(blist);
-                            bllen--;
+                            bp = bp->prev;
+                            list_remove(blist, bp->next);
+                            print_behind_cursor(blist, bp, '\b', 0, 0);
                         }
-                    }
-                    
-                    break;
-                }
-
-                // PRESSED CTRL + BACKSPACE
-                case 8:
-                {
-                    if (cmdmode)
-                    {
-                        /* 줄넘김과 두 번째 공백 전까지 지움
-                         * 두 번째 공백: e.g. 맨 끝 글자가 공백 문자인 상태에서 CTRL + BACKSPACE를 누른 경우
-                         * 그 공백을 지움과 함께 그 다음 공백까지 지움
-                         * 
-                         * 반복문 세 개: 각각 그 첫 번째 공백까지, 공백이 없는 구간, 두 번째 공백까지의
-                         * 문자 지움 지시를 의미함
-                         */
-
-                        for (cllen; cllen > 0 && clist -> tail -> val != '\n' && clist -> tail -> val == ' '; printf("\b \b"), list_rpop(clist), cllen--);
-                        for (cllen; cllen > 0 && clist -> tail -> val != '\n' && clist -> tail -> val != ' '; printf("\b \b"), list_rpop(clist), cllen--);
-                        for (cllen; cllen > 0 && clist -> tail -> val != '\n' && clist -> tail -> val == ' '; printf("\b \b"), list_rpop(clist), cllen--);
-                    }
-
-                    else
-                    {
-                        for (bllen; bllen > 0 && blist -> tail -> val != '\n' && blist -> tail -> val == ' '; printf("\b \b"), list_rpop(blist), bllen--);
-                        for (bllen; bllen > 0 && blist -> tail -> val != '\n' && blist -> tail -> val != ' '; printf("\b \b"), list_rpop(blist), bllen--);
-                        for (bllen; bllen > 0 && blist -> tail -> val != '\n' && blist -> tail -> val == ' '; printf("\b \b"), list_rpop(blist), bllen--);
                     }
                     
                     break;
@@ -625,41 +1404,104 @@ int main(int argc, char *argv[])
                 // PRESSED DELETE
                 case 128:
                 {
-                    // 
-                    // 방향키 쓰면 쓸거임
-                    // 
+                    // cmdmode에서는 줄넘김 안 쓰는 걸로 가정.
+                    if (cmdmode && cp != clist->tail)
+                    {
+                        list_remove(clist, cp->next);
+                        print_behind_cursor(clist, cp, 0, 0, 0);
+                    }
+
+                    // default (message) mode
+                    else if (bp != blist->tail)
+                    {
+                        // 지울 문자가 줄넘김일 때
+                        if (bp->next->val == '\r')
+                        {
+                            int curpos = getCurposFromListptr(blist, bp);
+                            eraseInputSpace(blist, bp);
+
+                            list_remove(blist, bp->next);
+                            list_remove(blist, bp->next);
+
+                            reprintList(blist, bp, curpos);
+                        }
+                        
+                        // 아닐 때 (단일 문자 삭제)
+                        else
+                        {
+                            list_remove(blist, bp->next);
+                            print_behind_cursor(blist, bp, 0, 0, 0);
+                        }
+                    }
+                    
                     break;
                 }
 
                 // PRESSED ENTER
                 case 13:
                 {
-                    // 내용 없이 엔터 때린 경우는 무시
-                    if (bllen == 0) break;
+                    // 버퍼 리스트에 유의미한 데이터가 없으면 무시
+                    if (list_is_empty(cmdmode ? clist : blist)) break;
 
                     if (cmdmode)
                     {
-                        transfer_list_data(cmd, clist, &cllen, 1);
+                        cp = transfer_list_data(cmd, clist, 1);
 
-                        // 
+                        printf("\033[2A\rCommand: %s\033[2B", cmd);  // 입력값 출력[테스트 코드]
+                        printf("\33[2K\r> ");  // 현재 입력 줄 지움
+
                         // DO SOMETHING WITH THE COMMAND HERE...
                         // 명령어에 따른 동작 실행 e.g. 클라이언트 목록 뽑기
-                        // cmd[some_index] ...
-                        // 
+
+                        // 숫자로 시작하면
+                        if (cmd[0] > 47 && cmd[0] < 58)
+                        {
+                            // ...
+                        }
+                        
+                        // 'c'로 시작하면
+                        else if (cmd[0] == 'c')
+                        {
+                            // ...
+                        }
+
+                        else
+                        {
+                            // ...
+                        }
                     }
 
                     else
                     {
-                        transfer_list_data(buf, blist, &bllen, 1);
+                        int lfcnt = getLFcnt(blist);
+                        printf("\033[%dB", getLFcnt_from_node(bp, LIST_HEAD));
 
-                        // SEND
-                        send_msg(3000, buf);
+                        //
+                        // AFTER THIS THE BUFFER LIST [WILL] BE EMPTY .
+                        //
+                        bp = transfer_list_data(buf, blist, 1);
 
-                        // READ (CREATE OUTPUT FROM SERVER MESSAGE)
-                        recv_msg(&cmdcode, sender, message);
-                        
-                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1);
-                        printf("\r\n%s sent: %s\r\n", sender, message);
+                        //// SEND
+
+                        // send_msg(OPENCHAT_CMD_CODE, buf);    // original
+                        send_singlechat(buf);
+
+                        //// READ (CREATE OUTPUT FROM SERVER MESSAGE)
+
+                        // recv_msg(&cmdcode, sender, message);    // original
+
+                        memset(buf, 0, BUF_SIZE);
+                        read(sock, buf, BUF_SIZE);
+
+                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + lfcnt, 1, bp);
+                        if (is_init) { printf("\r\n"); is_init = 0; }
+
+                        if (servmsg_printed) servmsg_printed = 0;
+
+                        // printf("\r\n%s sent: %s\r\n", sender, message); // original
+                        printf("\r\n%d (names 받아서 대체 필요) sent: %s\r\n", MEMBER_SRL, &buf[CMDCODE_SIZE * 3]);
+
+                        global_curpos = 0;
 
                         prompt_printed = 0;
 
@@ -680,31 +1522,42 @@ int main(int argc, char *argv[])
 
                     else
                     {
-                        printf("\r\n");
-                        list_rpush(blist, list_node_new('\r'));
-                        list_rpush(blist, list_node_new('\n'));
-                        bllen += 2;
+                        printf("\033[%dB", getLFcnt_from_node(bp, LIST_HEAD));
+                        moveCursorUp(getLFcnt(blist), 1, 0);
+
+                        list_insert(blist, bp, '\n');
+                        list_insert(blist, bp, '\r');
+                        bp = bp->next->next;
+
+                        global_curpos = getLFcnt(blist);
+
+                        reprintList(blist, bp, 0);
                     }
 
                     break;
                 }
                 
-                // PRESSED OTHER
-                // 타이핑 중
+                // PRESSED OTHER: IS TYPING
+                // 일반 입력 중
                 default:
                 {
-                    printf("%c", c);
+                    // ALT + 키 중 사용 지정하지 않은 키값은 무시
+                    if (c < 0) break;
 
                     if (cmdmode)
                     {
-                        list_rpush(clist, list_node_new(c));
-                        cllen++;
+                        cp = list_insert(clist, cp, c);
+                        print_behind_cursor(clist, cp, c, 0, 0);
                     }
-                    
+
                     else
                     {
-                        list_rpush(blist, list_node_new(c));
-                        bllen++;
+                        // MESSAGE TOO LONG
+                        if (blist->len > MSG_SIZE) break;
+
+                        if (bp != blist->tail && bp->next->val == '\r') printf("%c", c);
+                        else print_behind_cursor(blist, bp, c, 0, 0);
+                        bp = list_insert(blist, bp, c);
                     }
 
                     break;
