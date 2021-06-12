@@ -161,7 +161,7 @@ void send_singlechat_request(int from, int to_sock)
 
     sprintf(pass, "%d", SINGLECHAT_REQ_CODE);
     sprintf(&pass[CMDCODE_SIZE], "%d", from);
-    write(to_sock, pass, 4 * 2);
+    write(to_sock, pass, CMDCODE_SIZE * 2);
 }
 
 void send_singlechat_response(int from, int to_sock, int accepted)
@@ -171,7 +171,7 @@ void send_singlechat_response(int from, int to_sock, int accepted)
     sprintf(pass, "%d", SINGLECHAT_RESP_CODE);
     sprintf(&pass[CMDCODE_SIZE], "%d", from);
     sprintf(&pass[CMDCODE_SIZE * 2], "%d", accepted);
-    write(to_sock, pass, 4 * 3);
+    write(to_sock, pass, CMDCODE_SIZE * 3);
 }
 
 // singlechat <요청>에 대한 항목 추출
@@ -179,9 +179,9 @@ void extract_singlechat_response(char *buf, int *member_srl, int *accepted)
 {
     char tmp[4] = { 0, };
 
-    memcpy(tmp, &buf[4 * 1], 4);
+    memcpy(tmp, &buf[CMDCODE_SIZE * 1], 4);
     *member_srl = atoi(tmp);
-    memcpy(tmp, &buf[4 * 2], 4);
+    memcpy(tmp, &buf[CMDCODE_SIZE * 2], 4);
     *accepted = atoi(tmp);
 }
 

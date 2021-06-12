@@ -193,7 +193,7 @@ void send_singlechat_request(int member_srl)
 
     sprintf(pass, "%d", SINGLECHAT_REQ_CODE);
     sprintf(&pass[CMDCODE_SIZE], "%d", member_srl);
-    write(sock, pass, 4 * 2);
+    write(sock, pass, CMDCODE_SIZE * 2);
 }
 
 void send_singlechat_response(int member_srl, int accepted)
@@ -203,7 +203,7 @@ void send_singlechat_response(int member_srl, int accepted)
     sprintf(pass, "%d", SINGLECHAT_RESP_CODE);
     sprintf(&pass[CMDCODE_SIZE], "%d", member_srl);
     sprintf(&pass[CMDCODE_SIZE * 2], "%d", accepted);
-    write(sock, pass, 4 * 3);
+    write(sock, pass, CMDCODE_SIZE * 3);
 }
 
 
@@ -974,7 +974,7 @@ int main(int argc, char *argv[])
 
                         moveCursorUp(1, 1, 0);
 
-                        if (atoi(&buf[4 * 2]))  // Is existing client
+                        if (atoi(&buf[CMDCODE_SIZE * 2]))  // Is existing client
                         {
                             printf("%d is an existing client. Waiting for response...\n", req_to);
                             fflush(0);
@@ -993,7 +993,7 @@ int main(int argc, char *argv[])
                     {
                         waiting_for_target = 0;
 
-                        int accepted = atoi(&buf[4 * 2]);
+                        int accepted = atoi(&buf[CMDCODE_SIZE * 2]);
                         if (accepted)
                         {
                             moveCursorUp(0, 1, 0);
