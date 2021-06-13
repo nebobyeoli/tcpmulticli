@@ -136,7 +136,7 @@ void sendAll(int clnt_cnt, int cmdcode, char *sender, char *msg, char *servlog)
     // APPEND MESSAGE
     sprintf(&message[CMDCODE_SIZE + NAME_SIZE], "%s", msg);
     
-    if (servlog) printf("\r\nMESSAGE FROM SERVER: %s\r\n", servlog);
+    if (servlog) printf("\r\n\033[1mMESSAGE FROM SERVER: %s\033[0m\r\n", servlog);
     printf("Length of buf: %d\r\n", (int)strlen(msg));
     printf("Total msgsize: %d of %d maximum\r\n", CMDCODE_SIZE + NAME_SIZE + (int)strlen(msg), BUF_SIZE);
 
@@ -147,7 +147,7 @@ void sendAll(int clnt_cnt, int cmdcode, char *sender, char *msg, char *servlog)
         if (client[i] < 0 || names[i][0] == 0) continue;
 
         write(client[i], message, BUF_SIZE);
-        printf("Sent to client %d [%d] (%s)\r\n", i, client[i], names[i]);
+        printf("\033[1;34mSent to client\033[0m %d [%d] (%s)\r\n", i, client[i], names[i]);
     }
 }
 
@@ -335,7 +335,12 @@ void check_append_emojis(char *msg, char *mdest)
         // 있으면 그 sub 문자열이 등장하는 시작 메모리 위치를, 없으면 NULL(= 0)을 반환한다.
         while (index = strstr(swap ? mdest : message, TOKEN))
         {
-            if (first) { for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n"); first = 0; }
+            if (first)
+            {
+                moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
+                printf("\r\n");
+                first = 0;
+            }
 
             // ㄴ은 니은이다
             printf("\r\n==============================================\r\n------------------------------------------\r\n%s\r\n\nㄴ==> Before swap", message);
@@ -366,7 +371,7 @@ void check_append_emojis(char *msg, char *mdest)
                 // 굳!
                 memcpy(mdest, message, MSG_SIZE);
 
-                printf("\r\n------------------------------------------\r\n%s\r\n\nㄴ==> After swap\r\n------------------------------------------\r\ni = %d, swapped %s\r\n======================================\r\n", message, i, TOKEN);
+                printf("\r\n------------------------------------------\r\n%s\r\n\nㄴ==> After swap\r\n------------------------------------------\r\ni = %d, swapped %s\r\n==============================================\r\n", message, i, TOKEN);
 
                 swap = 0;
             }
@@ -1023,6 +1028,8 @@ int main(int argc, char **argv)
 
     printf("\033[0m\nemojiCnt: %d\n\n", emojiCnt);
 
+    // for (int i = 1; i < PP_LINE_SPACE; i++) printf("\n");
+
     fflush(0);
     
     //// 이때부터 글자 하나씩 입력받기 모드 시작.
@@ -1115,7 +1122,7 @@ int main(int argc, char **argv)
                     if (cmdmode) moveCursorUp(PP_LINE_SPACE, 1, 0);
                     else         moveCursorUp(PP_LINE_SPACE + getLFcnt(blist), 1, bp);
 
-                    printf("\r\nClosed server.");
+                    printf("\r\n\033[1;4;33mCLOSED SERVER.\033[0m");
                     for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n");
 
                     return 0;
@@ -1492,7 +1499,7 @@ int main(int argc, char **argv)
                     {
                         // SEND DISCONNECTED INFORMATION TO ALL CLIENTS
                         memset(message, 0, BUF_SIZE);
-                        sprintf(message, "%s left the chat.", names[i]);
+                        sprintf(message, "\033[33m%s left the chat.", names[i]);
                         sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, message, message);
 
                         memset(names[i], 0, NAME_SIZE);
@@ -1522,7 +1529,7 @@ int main(int argc, char **argv)
                             default                     : msgoffset = CMDCODE_SIZE;             break;
                         }
 
-                        printf("\r\nReceived from %d [%d] (%s): %d %s\r\n", i, client[i], names[i], cmdcode, &buf[msgoffset]);
+                        printf("\r\n\033[1;33mReceived from\033[0m %d [%d] (%s): %d %s\r\n", i, client[i], names[i], cmdcode, &buf[msgoffset]);
                     }
 
                     //
@@ -1556,12 +1563,12 @@ int main(int argc, char **argv)
                     {
                         int req_to = atoi(&buf[CMDCODE_SIZE]);
 
-                        printf("Singlechat Requested from %d [%d] to %d [%d]\r\n", i, client[i], req_to, client[req_to]);
+                        printf("\033[1;33mSinglechat Requested\033[0m from %d [%d] to %d [%d]\r\n", i, client[i], req_to, client[req_to]);
 
                         // 해당 클라이언트 연결이 없거나 이름 설정 안 되어 있음
                         if (client[req_to] == -1 || names[req_to][0] <= 0)
                         {
-                            printf("%d is not an existing client.\r\n", req_to);
+                            printf("\033[1;32m%d is not an existing client.\033[0m\r\n", req_to);
                             send_singlechat_response(serv_sock, client[i], 0);
                         }
 
@@ -1569,7 +1576,7 @@ int main(int argc, char **argv)
                         {
                             send_singlechat_response(serv_sock, client[i], 1);
                             send_singlechat_request(i, client[req_to]);
-                            printf("Requested chat to %d [%d].\r\n", req_to, client[req_to]);
+                            printf("\033[1;32mRequested chat\033[0m to %d [%d].\r\n", req_to, client[req_to]);
                         }
                     }
 
@@ -1583,14 +1590,14 @@ int main(int argc, char **argv)
 
                         if (accepted)
                         {
-                            printf("Starting private chat: %d (%s) <==> %d (%s)\r\n", resp_to, names[resp_to], i, names[i]);
+                            printf("\033[1;32mStarting private chat:\033[0m %d (%s) <==> %d (%s)\r\n", resp_to, names[resp_to], i, names[i]);
                             client_data[i].target = resp_to;
                             client_data[resp_to].target = i;
                         }
 
                         else
                         {
-                            printf("%d (%s) declined chat with %d (%s).\r\n", i, names[i], resp_to, names[resp_to]);
+                            printf("\033[1;32m%d (%s) declined chat with %d (%s).\033[0m\r\n", i, names[i], resp_to, names[resp_to]);
                         }
                     }
                     
@@ -1604,6 +1611,7 @@ int main(int argc, char **argv)
                         //// REJECTED
                         if (taken)
                         {
+                            printf("\033[1;32mName already taken:\033[0m %s\r\n", &buf[CMDCODE_SIZE]);
                             write(client[i], "0", ACCEPT_MSG_SIZE);
                         }
                         
@@ -1622,11 +1630,11 @@ int main(int argc, char **argv)
                             memset(names[i], 0, NAME_SIZE);
                             memset(client_data[i].nick, 0, NAME_SIZE);
                             sprintf(names[i], "%s", &buf[CMDCODE_SIZE]);
-                            printf("Set name of client %d [%d] as [%s]\r\n", i, client[i], names[i]);
+                            printf("\033[1;32mSet name of client\033[0m %d [%d] as [%s]\r\n", i, client[i], names[i]);
 
                             // SEND JOIN INFORMATION TO ALL CLIENTS
                             memset(message, 0, BUF_SIZE);
-                            sprintf(message, "%s joined the chat!", names[i]);
+                            sprintf(message, "\033[33m%s joined the chat!", names[i]);
                             sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, message, message);
                         }
                     }
@@ -1664,7 +1672,7 @@ int main(int argc, char **argv)
                             memcpy(&tmp, &buf[CMDCODE_SIZE * 2], sizeof(int));
                             int target = atoi(tmp);
 
-                            printf("Singlechat: %d [%d] ==> %d [%d]", i, client[i], target, client[target]);
+                            printf("\033[1;32mSinglechat:\033[0m %d [%d] ==> %d [%d]\r\n", i, client[i], target, client[target]);
                             fflush(stdout);
 
                             // 온 거 그대로 전달 <이모티콘 있으면 위 check_append_emojis에서 추가되었음>

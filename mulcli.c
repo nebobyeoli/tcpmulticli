@@ -893,7 +893,7 @@ int main(int argc, char *argv[])
                 memcpy(nname, buf, NAME_SIZE);
 
                 MEMBER_SRL = atoi(&message[1]);
-                printf("\nMEMBER_SRL: %d\n", MEMBER_SRL);
+                printf("\n\033[1;33mMEMBER_SRL: %d\033[0m\n", MEMBER_SRL);
                 
                 break;
             }
@@ -1180,7 +1180,8 @@ int main(int argc, char *argv[])
                         printf("\r\n\n\n");
                         servmsg_printed = 1;
                     }
-                    printf("============ %s ============\r\n\n\n", &message[CMDCODE_SIZE + NAME_SIZE]);
+                    if (strstr(&message[CMDCODE_SIZE + NAME_SIZE], "\033[33m")) printf("\033[33m");
+                    printf("\033[1m============ %s ============\033[0m\r\n\n\n", &message[CMDCODE_SIZE + NAME_SIZE]);
                 }
 
                 // CODE 3001: 개인 채팅
@@ -1190,7 +1191,7 @@ int main(int argc, char *argv[])
 
                     if (cmdcode == SINGLECHAT_CMD_CODE)
                     {
-                        printf("\r\n%d (names 받아서 대체 필요) sent: %s\r\n", client_data[MEMBER_SRL].target, &message[CMDCODE_SIZE * 3]);
+                        printf("\r\n\033[1m%d (names 받아서 대체 필요)\033[0m sent: %s\r\n", client_data[MEMBER_SRL].target, &message[CMDCODE_SIZE * 3]);
                         fflush(stdout);
                     }
                 }
@@ -1247,7 +1248,7 @@ int main(int argc, char *argv[])
                     if (cmdmode) moveCursorUp(PP_LINE_SPACE, 1, 0);
                     else         moveCursorUp(PP_LINE_SPACE + getLFcnt(blist), 1, bp);
 
-                    printf("\r\nClosed client.");
+                    printf("\r\n\033[1;4;33mCLOSED CLIENT.\033[0m");
                     for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n");
 
                     return 0;
@@ -1508,7 +1509,7 @@ int main(int argc, char *argv[])
                         if (servmsg_printed) servmsg_printed = 0;
 
                         // printf("\r\n%s sent: %s\r\n", sender, message); // original
-                        printf("\r\n%d (names 받아서 대체 필요) sent: %s\r\n", MEMBER_SRL, &buf[CMDCODE_SIZE * 3]);
+                        printf("\r\n\033[1m%d (names 받아서 대체 필요)\033[0m sent: %s\r\n", MEMBER_SRL, &buf[CMDCODE_SIZE * 3]);
 
                         global_curpos = 0;
 
