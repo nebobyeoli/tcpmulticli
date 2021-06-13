@@ -873,9 +873,9 @@ int main(int argc, char *argv[])
         else
         {
             sprintf(message, "%d", SETNAME_CMD_CODE);
-            sprintf(&message[CMDCODE_SIZE + 1], "%s", buf);
+            sprintf(&message[CMDCODE_SIZE], "%s", buf);
             
-            write(sock, message, CMDCODE_SIZE + 1 + namelen);
+            write(sock, message, CMDCODE_SIZE + namelen);
 
             memset(message, 0, BUF_SIZE);
             read(sock, message, ACCEPT_MSG_SIZE);
@@ -1159,6 +1159,9 @@ int main(int argc, char *argv[])
 
             else if (cmdcode == SERVMSG_CMD_CODE || cmdcode == OPENCHAT_CMD_CODE || cmdcode == SINGLECHAT_CMD_CODE)
             {
+                if (cmdmode) global_curpos = getCurposFromListptr(clist, cp);
+                else global_curpos = getCurposFromListptr(blist, bp);
+
                 // PRINT MSG AFTER REMOVING PREVIOUS LINES
                 moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
                 if (is_init) { printf("\r\n"); is_init = 0; }
@@ -1201,8 +1204,14 @@ int main(int argc, char *argv[])
         if (!prompt_printed)
         {
             for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n");
+
             printf("%s", cmdmode ? cmd_message : pp_message);
+
+            if (cmdmode) reprintList(clist, cp, global_curpos);
+            else reprintList(blist, bp, global_curpos);
+
             prompt_printed = 1;
+
             fflush(stdout);
         }
 

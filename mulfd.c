@@ -338,7 +338,7 @@ void check_append_emojis(char *msg, char *mdest)
             if (first) { for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n"); first = 0; }
 
             // ㄴ은 니은이다
-            printf("\r\n==============================================\r\n------------------------------------------\r\n%s\r\n\nㄴ==> Before swap", message, i, TOKEN);
+            printf("\r\n==============================================\r\n------------------------------------------\r\n%s\r\n\nㄴ==> Before swap", message);
 
             // 이거 약간 불법 비슷하게 볼 수도 있겠다
             // 일단 배열 자체를 int 치환하기 때문이다
@@ -1050,6 +1050,8 @@ int main(int argc, char **argv)
             else reprintList(blist, bp, global_curpos);
 
             prompt_printed = 1;
+
+            fflush(stdout);
         }
 
         // SEND HEARTBEAT REQUEST
@@ -1421,6 +1423,9 @@ int main(int argc, char **argv)
         allfds = readfds;
         state = select(fd_max + 1, &allfds, 0, 0, &ti);
 
+        if (cmdmode) global_curpos = getCurposFromListptr(clist, cp);
+        else global_curpos = getCurposFromListptr(blist, bp);
+
         // ACCEPT CLIENT TO SERVER SOCK
         if (FD_ISSET(serv_sock, &allfds))
         {
@@ -1492,8 +1497,6 @@ int main(int argc, char **argv)
 
                         memset(names[i], 0, NAME_SIZE);
                     }
-
-                    prompt_printed = 0;
                 }
 
                 else
@@ -1510,10 +1513,16 @@ int main(int argc, char **argv)
 
                         int msgoffset;
 
-                        if (cmdcode == OPENCHAT_CMD_CODE) msgoffset = CMDCODE_SIZE + NAME_SIZE;
-                        else if (cmdcode == SINGLECHAT_CMD_CODE) msgoffset = CMDCODE_SIZE * 3;
-                        
-                        printf("\r\nReceived from %d [%d] (%s): %s %s\r\n", i, client[i], names[i], buf, &buf[msgoffset]);
+                        switch (cmdcode)
+                        {
+                            case SINGLECHAT_RESP_CODE   : msgoffset = CMDCODE_SIZE * 2;         break;
+                            case OPENCHAT_CMD_CODE      : msgoffset = CMDCODE_SIZE + NAME_SIZE; break;
+                            case SINGLECHAT_CMD_CODE    : msgoffset = CMDCODE_SIZE * 3;         break;
+                            
+                            default                     : msgoffset = CMDCODE_SIZE;             break;
+                        }
+
+                        printf("\r\nReceived from %d [%d] (%s): %d %s\r\n", i, client[i], names[i], cmdcode, &buf[msgoffset]);
                     }
 
                     //
@@ -1590,7 +1599,7 @@ int main(int argc, char **argv)
                         // CHECK IF REQUESTED NAME IS TAKEN
                         int taken = 0;
                         for (j = 0; !taken && j < clnt_cnt; j++)
-                            if (!strcmp(&buf[CMDCODE_SIZE + 1], names[j])) taken = 1;
+                            if (!strcmp(&buf[CMDCODE_SIZE], names[j])) taken = 1;
 
                         //// REJECTED
                         if (taken)
@@ -1612,7 +1621,7 @@ int main(int argc, char **argv)
 
                             memset(names[i], 0, NAME_SIZE);
                             memset(client_data[i].nick, 0, NAME_SIZE);
-                            sprintf(names[i], "%s", &buf[CMDCODE_SIZE + 1]);
+                            sprintf(names[i], "%s", &buf[CMDCODE_SIZE]);
                             printf("Set name of client %d [%d] as [%s]\r\n", i, client[i], names[i]);
 
                             // SEND JOIN INFORMATION TO ALL CLIENTS
