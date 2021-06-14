@@ -73,7 +73,18 @@ char pp_message[] = "Input message(CTRL+C to quit):\r\n";
 // command mode message, 즉 cmd mode에서의 입력 문구
 char cmd_message[] = "Enter command(ESC to quit):\r\n> ";
 
-char *dice_message[10] = { "\r\n뭐야 내 주사위 돌려줘요.\r\n나온 숫자 : ","\r\n주사위는 잘못이 없습니다...\r\n나온 숫자 : ","\r\n주사위 운도 실력입니다.\r\n나온 숫자 : ","\r\n주사위는 최선을 다했습니다.\r\n나온 숫자 : ","\r\n평균은 맞췄습니다.\r\n나온 숫자 : ","\r\n예 저희가 주사위 많이 하죠.\r\n나온 숫자 : ","\r\n꽤 높은 숫자입니다.\r\n나온 숫자 : ","\r\n만족스럽네요.\r\n나온 숫자 : ","\r\n오늘은 되는 날입니다.\r\n나온 숫자 : ","\r\n떡상 가즈아ㅏㅏㅏ\r\n나온 숫자 : " };
+char* dice_message[10] = {
+    "\r\n뭐야 내 주사위 돌려줘요.\r\n나온 숫자 : ",
+    "\r\n주사위는 잘못이 없습니다...\r\n나온 숫자 : ",
+    "\r\n주사위 운도 실력입니다.\r\n나온 숫자 : ",
+    "\r\n주사위는 최선을 다했습니다.\r\n나온 숫자 : ",
+    "\r\n평균은 맞췄습니다.\r\n나온 숫자 : ",
+    "\r\n예 저희가 주사위 많이 하죠.\r\n나온 숫자 : ",
+    "\r\n꽤 높은 숫자입니다.\r\n나온 숫자 : ",
+    "\r\n만족스럽네요.\r\n나온 숫자 : ",
+    "\r\n오늘은 되는 날입니다.\r\n나온 숫자 : ",
+    "\r\n떡상 가즈아ㅏㅏㅏ\r\n나온 숫자 : "
+};
 
 int emojiCnt = 0;
 
@@ -411,19 +422,24 @@ void check_append_dice(char *msg, char *mdest)
 	char message[MSG_SIZE];
 	char getNum[3];
 
-	if (index=strstr(msg,"/dice"))
+	while (index = strstr(msg, "/dice"))
 	{
-		randnum=rand()%100+1; // 0~99
+        unsigned int remaining_len = strlen(&index[5]);
+
+        memcpy(index, &index[5], remaining_len);
+        memset(&index[remaining_len], 0, remaining_len + 1);
+
+		randnum = rand() % 100 + 1; // 0~99
 		itoa(randnum, getNum);
-		strcpy(message, dice_message[(randnum-1)/10]);
+
+		strcpy(message, dice_message[(randnum-1) / 10]);
 		strcat(message, getNum);
-
-		printf("%s",message);
+		strcat(message, "\r\n");
 		strcat(msg, message);
+
+        memcpy(mdest, msg, MSG_SIZE);
 	}
-
 }
-
 
 // USAGE OF HORIZONTAL CURSOR MOVEMENT - BY BLOCKS
 /*
@@ -1306,7 +1322,7 @@ int main(int argc, char **argv)
                             print_behind_cursor(blist, bp, '\b', 0, 0);
                         }
                     }
-                    
+
                     break;
                 }
 
@@ -1334,7 +1350,7 @@ int main(int argc, char **argv)
 
                             reprintList(blist, bp, curpos);
                         }
-                        
+
                         // 아닐 때 (단일 문자 삭제)
                         else
                         {
@@ -1342,7 +1358,7 @@ int main(int argc, char **argv)
                             print_behind_cursor(blist, bp, 0, 0, 0);
                         }
                     }
-                    
+
                     break;
                 }
 
@@ -1373,10 +1389,13 @@ int main(int argc, char **argv)
                         //
                         bp = transfer_list_data(buf, blist, 1);
 
-                        // CHECK FOR EMOJIS
                         char mdest[MSG_SIZE], umdest[MSG_SIZE] = "\r\nMESSAGE FROM SERVER:\r\n";
+
+                        // CHECK FOR EMOJIS
                         check_append_emojis(buf, mdest);
-						check_append_dice(buf, mdest);
+
+                        // CHECK FOR DICE
+						check_append_dice(mdest[0] ? mdest : buf, mdest);
 
                         memcpy(&umdest[strlen(umdest)], mdest, strlen(mdest));  // but also only while strlen(mdest) < MSG_SIZE - 24.
                         if (mdest[0]) strcat(umdest, "\r\n");
@@ -1422,7 +1441,7 @@ int main(int argc, char **argv)
 
                     break;
                 }
-                
+
                 // PRESSED OTHER: IS TYPING
                 // 일반 입력 중
                 default:
@@ -1449,7 +1468,7 @@ int main(int argc, char **argv)
 
             fflush(stdout);
         }
-        
+
         ti.tv_sec  = GETSERVMSG_TIMEOUT_SEC;
         ti.tv_usec = GETSERVMSG_TIMEOUT_USEC;
         
@@ -1551,7 +1570,7 @@ int main(int argc, char **argv)
                             case SINGLECHAT_RESP_CODE   : msgoffset = CMDCODE_SIZE * 2;         break;
                             case OPENCHAT_CMD_CODE      : msgoffset = CMDCODE_SIZE + NAME_SIZE; break;
                             case SINGLECHAT_CMD_CODE    : msgoffset = CMDCODE_SIZE * 3;         break;
-                            
+
                             default                     : msgoffset = CMDCODE_SIZE;             break;
                         }
 
@@ -1626,7 +1645,7 @@ int main(int argc, char **argv)
                             printf("\033[1;32m%d (%s) declined chat with %d (%s).\033[0m\r\n", i, names[i], resp_to, names[resp_to]);
                         }
                     }
-                    
+
                     else if (cmdcode == SETNAME_CMD_CODE)
                     {
                         // CHECK IF REQUESTED NAME IS TAKEN
@@ -1640,7 +1659,7 @@ int main(int argc, char **argv)
                             printf("\033[1;32mName already taken:\033[0m %s\r\n", &buf[CMDCODE_SIZE]);
                             write(client[i], "0", ACCEPT_MSG_SIZE);
                         }
-                        
+
                         //// ACCEPTED
                         else
                         {
@@ -1676,20 +1695,24 @@ int main(int argc, char **argv)
                         // EXTRACT MESSAGE FROM RECV BUFFER
                         if (cmdcode == OPENCHAT_CMD_CODE) strcpy(msg, &buf[CMDCODE_SIZE + NAME_SIZE]);
                         else if (cmdcode == SINGLECHAT_CMD_CODE) strcpy(msg, &buf[CMDCODE_SIZE * 3]);
-                        
-                        // CHECK FOR EMOJIS
+
                         char mdest[BUF_SIZE];
+
+                        // CHECK FOR EMOJIS
                         check_append_emojis(msg, mdest);
-						check_append_dice(msg, mdest);
+
+                        // CHECK FOR DICE
+						check_append_dice(mdest[0] ? mdest : buf, mdest);
+
                         memset(message, 0, BUF_SIZE);
 
                         if (cmdcode == OPENCHAT_CMD_CODE)
                         {
-
                             // SEND RECEIVED MESSAGE TO ALL CLIENTS
                             if (mdest[0]) sendAll(clnt_cnt, OPENCHAT_CMD_CODE, names[i], mdest, mdest);
                             else          sendAll(clnt_cnt, OPENCHAT_CMD_CODE, names[i], msg, NULL);
                         }
+
                         else
                         {
                             if (mdest[0]) memcpy(&buf[CMDCODE_SIZE * 3], mdest, BUF_SIZE);
