@@ -1702,14 +1702,18 @@ int main(int argc, char **argv)
                         check_append_emojis(msg, mdest);
 
                         // CHECK FOR DICE
-						check_append_dice(mdest[0] ? mdest : buf, mdest);
+						check_append_dice(mdest[0] ? mdest : msg, mdest);
 
                         memset(message, 0, BUF_SIZE);
 
                         if (cmdcode == OPENCHAT_CMD_CODE)
                         {
                             // SEND RECEIVED MESSAGE TO ALL CLIENTS
-                            if (mdest[0]) sendAll(clnt_cnt, OPENCHAT_CMD_CODE, names[i], mdest, mdest);
+                            if (mdest[0]) {
+                                printf("[[GOT DICE]]");
+                                sleep(2);
+                                sendAll(clnt_cnt, OPENCHAT_CMD_CODE, names[i], mdest, mdest);
+                            }
                             else          sendAll(clnt_cnt, OPENCHAT_CMD_CODE, names[i], msg, NULL);
                         }
 
