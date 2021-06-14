@@ -73,6 +73,8 @@ char pp_message[] = "Input message(CTRL+C to quit):\r\n";
 // command mode message, 즉 cmd mode에서의 입력 문구
 char cmd_message[] = "Enter command(ESC to quit):\r\n> ";
 
+char *dice_message[10] = { "\r\n뭐야 내 주사위 돌려줘요.\r\n나온 숫자 : ","\r\n주사위는 잘못이 없습니다...\r\n나온 숫자 : ","\r\n주사위 운도 실력입니다.\r\n나온 숫자 : ","\r\n주사위는 최선을 다했습니다.\r\n나온 숫자 : ","\r\n평균은 맞췄습니다.\r\n나온 숫자 : ","\r\n예 저희가 주사위 많이 하죠.\r\n나온 숫자 : ","\r\n꽤 높은 숫자입니다.\r\n나온 숫자 : ","\r\n만족스럽네요.\r\n나온 숫자 : ","\r\n오늘은 되는 날입니다.\r\n나온 숫자 : ","\r\n떡상 가즈아ㅏㅏㅏ\r\n나온 숫자 : " };
+
 int emojiCnt = 0;
 
 struct
@@ -401,6 +403,27 @@ void check_append_emojis(char *msg, char *mdest)
 
     fflush(stdout);
 }
+
+void check_append_dice(char *msg, char *mdest)
+{
+	int randnum; // 랜덤변수
+	char *index;
+	char message[MSG_SIZE];
+	char getNum[3];
+
+	if (index=strstr(msg,"/dice"))
+	{
+		randnum=rand()%100+1; // 0~99
+		itoa(randnum, getNum);
+		strcpy(message, dice_message[(randnum-1)/10]);
+		strcat(message, getNum);
+
+		printf("%s",message);
+		strcat(msg, message);
+	}
+
+}
+
 
 // USAGE OF HORIZONTAL CURSOR MOVEMENT - BY BLOCKS
 /*
@@ -953,6 +976,8 @@ int main(int argc, char **argv)
     // 현재 포트를 address already in use 안 띄우고 재사용할 수 있게 한다 - setsockopt(SO_REUSEADDR)
     int on = 1;
 
+	srand(time(0)); // 랜덤시트 
+
     serv_sock = socket(AF_INET, SOCK_STREAM, 0);
     if (serv_sock == -1) perror_exit("socket() error!\n");
 
@@ -1351,6 +1376,7 @@ int main(int argc, char **argv)
                         // CHECK FOR EMOJIS
                         char mdest[MSG_SIZE], umdest[MSG_SIZE] = "\r\nMESSAGE FROM SERVER:\r\n";
                         check_append_emojis(buf, mdest);
+						check_append_dice(buf, mdest);
 
                         memcpy(&umdest[strlen(umdest)], mdest, strlen(mdest));  // but also only while strlen(mdest) < MSG_SIZE - 24.
                         if (mdest[0]) strcat(umdest, "\r\n");
@@ -1654,7 +1680,7 @@ int main(int argc, char **argv)
                         // CHECK FOR EMOJIS
                         char mdest[BUF_SIZE];
                         check_append_emojis(msg, mdest);
-
+						check_append_dice(msg, mdest);
                         memset(message, 0, BUF_SIZE);
 
                         if (cmdcode == OPENCHAT_CMD_CODE)
