@@ -79,7 +79,9 @@ int sock;                   // 서버 소켓
 char nname[NAME_SIZE];      // 자기 자신의 닉네임
 
 int chat_status = 0; //idle = 0, personal_chat = 1, channel_chat = 2
-int chat_target = 0; //타겟 번호. 개인채팅이면 타겟 member_srl, 단체면 channel
+
+// 처음에 '0'이 아니라 '-1' 되도록 수정함: client 번호는 0부터 시작하기 때문.
+int chat_target = -1; //타겟 번호. 개인채팅이면 타겟 member_srl, 단체면 channel
 
 // prompt-print message, 즉 '입력 문구'
 char pp_message[] = "Input message(CTRL+C to quit):\r\n";
@@ -758,11 +760,11 @@ int isKeyboardWriting()
 void print_available_clients(int isFirstPrint)
 {
     if (!isFirstPrint) moveCursorUp(named_client_count + 3, 1, 0);
-    else printf("\n");
+    else printf("\r\n");
 
     int i;
     for (i = 0; i < MAX_SOCKS && client_data[i].nick[0]; i++)
-        printf("SRL %d (%s)\n", i, client_data[i].nick);
+        printf("SRL %d (%s)\r\n", i, client_data[i].nick);
     printf("TOTAL NAMED CLIENTS: %d\r\n\n", i);
 
     named_client_count = i;
@@ -830,7 +832,7 @@ int main(int argc, char *argv[])
     /* COMMAND MODE
      * ESC 눌러서 실행
      */
-    int cmdmode = 0;
+    int cmdmode;
 
     int cmdcode;
     char sender[NAME_SIZE];
@@ -957,6 +959,8 @@ int main(int argc, char *argv[])
 
     int req_from = -1;
     int req_to   = -1;
+
+/*
 
     while (1)
     {
@@ -1170,6 +1174,8 @@ int main(int argc, char *argv[])
     }
 
 
+*/
+
     ////// MESSAGE COMMUNICATION LOOP //////
     
     // SET TIMEOUT OF read()
@@ -1189,6 +1195,12 @@ int main(int argc, char *argv[])
     // int ci = 0;     // cmd string index
 
     int servmsg_printed = 0;
+
+    // 시작할 때는 무조건 cmdmode = 1;
+    cmdmode = 1;
+
+    //// if (chat_target != -1)
+    //// : 타겟 설정 안 됨을 의미함!
 
     while (1)
     {
@@ -1226,6 +1238,82 @@ int main(int argc, char *argv[])
                 read(sock, message, BUF_SIZE);
 
                 clientListProcess(message); // 클라이언트 리스트 받아옴
+
+                if (chat_target == -1)
+                    print_available_clients(0);
+            }
+
+            else if (cmdcode == HEARTBEAT_STR_CODE && chat_target == -1)
+            {
+                clientListProcess(message);
+
+                print_available_clients(0);
+
+            }
+
+            else if (cmdcode == SINGLECHAT_REQ_CODE && chat_target == -1)
+            {
+                req_from = atoi(&message[4]);
+
+                moveCursorUp(1, 1, 0);
+                printf("Client %d (%s) requested a private chat. Accept? [y/n]:\r\n> ", req_from, client_data[req_from].nick);
+                
+                fflush(0);
+
+                waiting_for_me = 1;
+            }
+            
+            else if (cmdcode == SINGLECHAT_RESP_CODE && chat_target == -1)
+            {
+                if (waiting_for_server)
+                {
+                    waiting_for_server = 0;
+
+                    moveCursorUp(1, 1, 0);
+
+                    if (atoi(&message[CMDCODE_SIZE * 2]))  // Is existing client
+                    {
+                        printf("%d (%s) is an existing client. Waiting for response...\r\n", req_to, client_data[req_to].nick);
+                        fflush(0);
+
+                        waiting_for_target = 1;
+                    }
+
+                    else
+                    {
+                        printf("%d (%s) is not an existing client.\r\n> ", req_to, client_data[req_to].nick);
+                        fflush(0);
+                    }
+                }
+
+                else if (waiting_for_target)
+                {
+                    waiting_for_target = 0;
+
+                    int accepted = atoi(&message[CMDCODE_SIZE * 2]);
+                    if (accepted)
+                    {
+                        moveCursorUp(0, 1, 0);
+                        printf("%d (%s) accepted the chat request.\r\n", req_to, client_data[req_to].nick);
+                        fflush(0);
+
+                        client_data[MEMBER_SRL].target = req_to;
+                        client_data[req_to].target = MEMBER_SRL;
+                        chat_status = 1;
+                        chat_target = req_to;
+
+                        // 이제 채팅할 수 있다.
+                        cmdmode = 0;
+                        continue;
+                    }
+
+                    else
+                    {
+                        moveCursorUp(1, 1, 0);
+                        printf("%d (%s) declined the chat request.\r\n> ", req_to, client_data[req_to].nick);
+                        fflush(0);
+                    }
+                }
             }
 
             else if (cmdcode == SERVMSG_CMD_CODE || cmdcode == OPENCHAT_CMD_CODE || cmdcode == SINGLECHAT_CMD_CODE)
@@ -1330,6 +1418,9 @@ int main(int argc, char *argv[])
                 {
                     if (cmdmode)
                     {
+                        // 타겟 있어야 나갈 수 있음!
+                        if (chat_target == -1) break;
+
                         // cmdmode에서 나갈 때
                         memset(cmd, 0, CMD_SIZE);
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
@@ -1525,30 +1616,101 @@ int main(int argc, char *argv[])
                     {
                         cp = transfer_list_data(cmd, clist, 1);
 
-                        printf("\033[2A\rCommand: %s\033[2B", cmd);  // 입력값 출력[테스트 코드]
-                        printf("\33[2K\r> ");  // 현재 입력 줄 지움
+                        printf("\033[2A\33[2K\rCommand: %s\033[2B", cmd);  // 입력값 출력[테스트 코드]
+                        printf("\r\n");
 
                         // DO SOMETHING WITH THE COMMAND HERE...
                         // 명령어에 따른 동작 실행 e.g. 클라이언트 목록 뽑기
 
-                        // 숫자로 시작하면
-                        if (cmd[0] > 47 && cmd[0] < 58)
+                        if (waiting_for_me)
                         {
-                            printf("starts in num\r\n");
-                            // ...
-                        }
-                        
-                        // 'c'로 시작하면
-                        else if (cmd[0] == 'c')
-                        {
-                            printf("starts in c\r\n");
-                            // ...
+                            waiting_for_me = 0;
+
+                            if (cmd[0] == 'y' || cmd[0] == 'Y')
+                            {
+                                moveCursorUp(1, 1, 0);
+
+                                send_singlechat_response(req_from, 1);
+                                
+                                client_data[MEMBER_SRL].target = req_from;
+                                client_data[req_from].target = MEMBER_SRL;
+                                chat_status = 1;
+                                chat_target = req_from;
+                                
+                                printf("Accepted chat request.\r\n");
+
+                                // 이제 채팅할 수 있다.
+                                cmdmode = 0;
+                                break;
+                            }
+                            else
+                            {
+                                moveCursorUp(2, 1, 0);
+
+                                send_singlechat_response(req_from, 0);
+
+                                printf("Declined chat request.\r\n> ");
+                            }
+
+                            fflush(stdout);
                         }
 
-                        else
+                        else if (!waiting_for_target)
                         {
-                            printf("command fail\r\n");
-                            // ...
+                            //// 명령어에 따른 초기 동작 실행
+
+                            // 숫자로 시작하면
+                            if (cmd[0] > 47 && cmd[0] < 58)
+                            {
+                                if (strlen(cmd) > 2)
+                                {
+                                    moveCursorUp(2, 0, 0);
+                                    printf("\033[1;33mNi de \033[4;7mCRAZY\033[0;1;33m ma?\033[0m\r\n> ");
+                                    fflush(0);
+                                    break; // continue;
+                                }
+
+                                req_to = atoi(cmd);
+
+                                // ignore request to SELF
+                                if (req_to == MEMBER_SRL)
+                                {
+                                    moveCursorUp(2, 0, 0);
+                                    printf("\033[1;33m호구짓 하지 마쇼!!\033[0m\r\n> ");
+                                    fflush(0);
+                                    break; // continue;
+                                }
+
+                                if(client_data[req_to].chat_status > 0)
+                                {
+                                    moveCursorUp(2, 0, 0);
+                                    printf("\033[1;33m해당 유저는 채팅중입니다\033[0m\r\n> ");
+                                    fflush(0);
+                                    break; // continue;
+                                }
+                                
+                                send_singlechat_request(req_to);
+
+                                moveCursorUp(2, 1, 0);
+                                printf("Requested chat with client %d. Waiting for response...\r\n", req_to);
+
+                                waiting_for_server = 1;
+                            }
+
+                            // 'c'로 시작하면
+                            else if (cmd[0] == 'c')
+                            {
+                                moveCursorUp(2, 1, 0);
+                                printf("아직 구현 안 됨\r\n> ");
+                            }
+
+                            else
+                            {
+                                moveCursorUp(2, 1, 0);
+                                printf("'%s' is not a valid command.\r\n> ", cmd);
+                            }
+
+                            fflush(stdout);
                         }
                     }
 
