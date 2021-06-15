@@ -148,7 +148,7 @@ void send_singlechat(char *message)
     memcpy(&result[offset], &tmp, sizeof(int));
     offset += sizeof(int);
 
-    itoa(client_data[MEMBER_SRL].target, tmp);
+    itoa(chat_target, tmp);
     memcpy(&result[offset], &tmp, sizeof(int));
     offset += sizeof(int);
 
@@ -921,8 +921,17 @@ int main(int argc, char *argv[])
     int is_init = 1;
 
     fflush(0);
+    read(sock, message, BUF_SIZE);
 
     //// FIRST 메인 화면 출력
+
+    char listget[BUF_SIZE] = {0,};
+    sprintf(listget, "%d", HEARTBEAT_REQ_CODE);
+    write(sock, listget, BUF_SIZE);
+    read(sock, message, BUF_SIZE);
+
+    printf("\n\033[1;33mMSG: %s\033[0m\n", message);
+    clientListProcess(message); // 클라이언트 리스트 받아옴
 
 	firstScene();
     printf("\n\n\n%s", cmd_message);
@@ -959,10 +968,10 @@ int main(int argc, char *argv[])
                 {
                     struct HeartBeatPacket hbp;
                     hbp.cmd_code = HEARTBEAT_CMD_CODE;
-                    hbp.member_srl = 0; // @todo 서버로부터 받아온 member_srl을 넣기
-                    hbp.chat_status = 1;
-                    hbp.target = 2;
-                    hbp.is_chatting = 1;
+                    hbp.member_srl = MEMBER_SRL;
+                    hbp.chat_status = chat_status;
+                    hbp.target = chat_target;
+                    hbp.is_chatting = isKeyboardWriting();
 
                     char message[BUF_SIZE] = {0,};
                     heartbeatSerialize(message, &hbp);
@@ -1018,6 +1027,8 @@ int main(int argc, char *argv[])
 
                             client_data[MEMBER_SRL].target = req_to;
                             client_data[req_to].target = MEMBER_SRL;
+                            chat_status = 1;
+                            chat_target = req_to;
 
                             // 이제 채팅할 수 있다.
                             break;
@@ -1172,12 +1183,14 @@ int main(int argc, char *argv[])
 
                 write(sock, message, BUF_SIZE);
 
-                char listget[10] = {0,};
+                char listget[BUF_SIZE] = {0,};
                 sprintf(listget, "%d", HEARTBEAT_REQ_CODE);
                 write(sock, listget, BUF_SIZE);
-                read(sock, message, BUF_SIZE);
 
-                clientListProcess(message); // 클라이언트 리스트 받아옴
+                char message2[BUF_SIZE] = {0,};
+                read(sock, message2, BUF_SIZE);
+
+                clientListProcess(message2); // 클라이언트 리스트 받아옴
             }
 
             else if (cmdcode == SERVMSG_CMD_CODE || cmdcode == OPENCHAT_CMD_CODE || cmdcode == SINGLECHAT_CMD_CODE)
