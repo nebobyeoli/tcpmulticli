@@ -1304,7 +1304,7 @@ int main(int argc, char **argv)
                             int curpos = getCurposFromListptr(blist, bp->prev->prev);
                             eraseInputSpace(blist, bp);
 
-                            sleep(1);
+                            // sleep(1);
 
                             bp = bp->prev->prev;
                             list_remove(blist, bp->next);
@@ -1714,8 +1714,8 @@ int main(int argc, char **argv)
                         {
                             // SEND RECEIVED MESSAGE TO ALL CLIENTS
                             if (mdest[0]) {
-                                printf("[[GOT DICE]]");
-                                sleep(2);
+                                // printf("[[GOT DICE]]");
+                                // sleep(2);
                                 sendAll(clnt_cnt, OPENCHAT_CMD_CODE, names[i], mdest, mdest);
                             }
                             else          sendAll(clnt_cnt, OPENCHAT_CMD_CODE, names[i], msg, NULL);
