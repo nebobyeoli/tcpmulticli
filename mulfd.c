@@ -948,7 +948,10 @@ int main(int argc, char **argv)
     }
 
     for (int i = 0; i < MAX_SOCKS; i++)
+    {
         memset(client_data[i].nick, 0, sizeof(client_data[i].nick));
+        client_data[i].target = -1;
+    }
 
     // https://stackoverflow.com/a/34550798
     DIR *dirp = opendir("./emojis");
@@ -1555,7 +1558,7 @@ int main(int argc, char **argv)
                     FD_CLR(client[i], &readfds);
                     client[i] = -1;
 
-                    // IF NAME WAS SET (HAD ACTUALLY ENGAGED IN CHAT)
+                    // IF NAME WAS SET
                     // 연결 해제된 클라이언트의 이름을 지워 준다
                     if (names[i][0])
                     {
@@ -1567,6 +1570,9 @@ int main(int argc, char **argv)
 
                         memset(names[i], 0, NAME_SIZE);
                         memset(client_data[i].nick, 0, NAME_SIZE);
+
+                        client_data[client_data[i].target].target = -1;
+                        client_data[i].target = -1;
 
                         memberlist_serialize_sendAll(clnt_cnt);
                     }

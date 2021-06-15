@@ -946,7 +946,6 @@ int main(int argc, char *argv[])
 
 	firstScene();
     print_available_clients(1);
-    fflush(stdout);
 
     FD_ZERO(&readfds);
     FD_SET(0, &readfds);
@@ -1243,12 +1242,26 @@ int main(int argc, char *argv[])
                     print_available_clients(0);
             }
 
-            else if (cmdcode == HEARTBEAT_STR_CODE && chat_target == -1)
+            else if (cmdcode == HEARTBEAT_STR_CODE)
             {
                 clientListProcess(message);
 
-                print_available_clients(0);
+                // target이 연결 해제되었을 때
+                if (client_data[MEMBER_SRL].target == -1)
+                {
+                    chat_target = -1;
+                    cmdmode = 1;
 
+                    moveCursorUp(1, 1, 0);
+                    firstScene();
+                    print_available_clients(1);
+                }
+
+                // 계속 "처음의(target 없음)" 상태일 때
+                else if (chat_target == -1)
+                {
+                    print_available_clients(0);
+                }
             }
 
             else if (cmdcode == SINGLECHAT_REQ_CODE && chat_target == -1)
@@ -1304,6 +1317,7 @@ int main(int argc, char *argv[])
 
                         // 이제 채팅할 수 있다.
                         cmdmode = 0;
+                        prompt_printed = 0;
                         continue;
                     }
 
@@ -1641,6 +1655,7 @@ int main(int argc, char *argv[])
 
                                 // 이제 채팅할 수 있다.
                                 cmdmode = 0;
+                                prompt_printed = 0;
                                 break;
                             }
                             else
