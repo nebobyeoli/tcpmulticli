@@ -855,7 +855,7 @@ void HeartBeatProcess(char *message)
     struct HeartBeatPacket hbp;
     disassembleHeartBeatPacket(message, &hbp);
 
-    time_t curr_time; // 현재 시간
+    time_t curr_time = time(NULL); // 현재 시간
 
     client_data[hbp.member_srl].logon_status = 1;
     client_data[hbp.member_srl].chat_status = hbp.chat_status;
@@ -863,13 +863,13 @@ void HeartBeatProcess(char *message)
     client_data[hbp.member_srl].is_chatting = hbp.is_chatting;
     client_data[hbp.member_srl].last_heartbeat_time = curr_time;
 
-    printf("HEARTBEAT! CS:%d, TG:%d, CT:%d\r\n", hbp.chat_status, hbp.target, hbp.is_chatting);
+    printf("HEARTBEAT! MS:%d, CS:%d, TG:%d, CT:%d\r\n", hbp.member_srl, hbp.chat_status, hbp.target, hbp.is_chatting);
 }
 
 // 해당 회원이 접속중인지 체크
 void checkLogon()
 {
-    time_t curr_time; // 현재 시간
+    time_t curr_time = time(NULL); // 현재 시간
 
     for(int i = 0; i < MAX_SOCKS; i++)
     {
@@ -1600,6 +1600,7 @@ int main(int argc, char **argv)
                         clientListSerialize(send_message);
 
                         write(client[i], send_message, BUF_SIZE);
+                        printf("<< MemberList Sended at [t: %ld] from %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
                     }
 
                     //// MODE : SINGLECHAT Request from client ////
@@ -1675,11 +1676,14 @@ int main(int argc, char **argv)
                             memset(names[i], 0, NAME_SIZE);
                             memset(client_data[i].nick, 0, NAME_SIZE);
                             sprintf(names[i], "%s", &buf[CMDCODE_SIZE]);
+                            sprintf(client_data[i].nick, "%s", &buf[CMDCODE_SIZE]);
                             printf("\033[1;32mSet name of client\033[0m %d [%d] as [%s]\r\n", i, client[i], names[i]);
 
                             // SEND JOIN INFORMATION TO ALL CLIENTS
                             memset(message, 0, BUF_SIZE);
                             sprintf(message, "\033[33m%s joined the chat!", names[i]);
+
+                            client_data[i].logon_status = 1; //로그온 상태로 전환
                             sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, message, message);
                         }
                     }
