@@ -936,7 +936,7 @@ void memberlist_serialize_sendAll(int clnt_cnt)
         if (client[i] < 0 || names[i][0] == 0) continue;
 
         write(client[i], send_message, BUF_SIZE);
-        printf(">> MemberList Sent      at [t: %ld] to   %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
+        printf("\033[1;34m>>\033[0m MemberList Sent      at [t: %ld] to   %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
     }
 }
 
@@ -948,7 +948,10 @@ int main(int argc, char **argv)
     }
 
     for (int i = 0; i < MAX_SOCKS; i++)
+    {
         memset(client_data[i].nick, 0, sizeof(client_data[i].nick));
+        client_data[i].target = -1;
+    }
 
     // https://stackoverflow.com/a/34550798
     DIR *dirp = opendir("./emojis");
@@ -1147,7 +1150,7 @@ int main(int argc, char **argv)
 
                 if (!has_client) has_client = 1;
                 write(client[i], "1500", CMDCODE_SIZE);
-                printf("\r\n>> HEARTBEAT at [t: %ld] to   %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
+                printf("\r\n\033[1;34m>> HEARTBEAT\033[0m at [t: %ld] to   %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
             }
 
             // 줄넘김 관리
@@ -1555,7 +1558,7 @@ int main(int argc, char **argv)
                     FD_CLR(client[i], &readfds);
                     client[i] = -1;
 
-                    // IF NAME WAS SET (HAD ACTUALLY ENGAGED IN CHAT)
+                    // IF NAME WAS SET
                     // 연결 해제된 클라이언트의 이름을 지워 준다
                     if (names[i][0])
                     {
@@ -1567,6 +1570,9 @@ int main(int argc, char **argv)
 
                         memset(names[i], 0, NAME_SIZE);
                         memset(client_data[i].nick, 0, NAME_SIZE);
+
+                        client_data[client_data[i].target].target = -1;
+                        client_data[i].target = -1;
 
                         memberlist_serialize_sendAll(clnt_cnt);
                     }
@@ -1606,7 +1612,7 @@ int main(int argc, char **argv)
 
                     if (cmdcode == HEARTBEAT_CMD_CODE)
                     {
-                        printf("\033[A<< HEARTBEAT at [t: %ld] from %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
+                        printf("\033[A\033[1;35m<< HEARTBEAT\033[0m at [t: %ld] from\033[0m %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
 
                         HeartBeatProcess(buf); // heartbeat 패킷 처리
                     }
@@ -1615,13 +1621,13 @@ int main(int argc, char **argv)
 
                     else if (cmdcode == HEARTBEAT_REQ_CODE)
                     {
-                        printf("<< MemberList Requested at [t: %ld] from %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
+                        printf("\033[1;35m<<\033[0m MemberList \033[1;35mRequested\033[0m at [t: %ld] from %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
 
                         char send_message[BUF_SIZE] = {0,};
                         clientListSerialize(send_message);
 
                         write(client[i], send_message, BUF_SIZE);
-                        printf(">> MemberList Sent      at [t: %ld] to   %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
+                        printf("\033[1;34m>>\033[0m MemberList \033[1;34mSent\033[0m      at [t: %ld] to   %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
                     }
 
                     //// MODE : SINGLECHAT Request from client ////
@@ -1660,6 +1666,15 @@ int main(int argc, char **argv)
                             printf("\033[1;32mStarting private chat:\033[0m %d (%s) <==> %d (%s)\r\n", resp_to, names[resp_to], i, names[i]);
                             client_data[i].target = resp_to;
                             client_data[resp_to].target = i;
+
+                            // // Create msg for "Started private chat!"
+                            // memset(buf, 0, BUF_SIZE);
+                            // sprintf(buf, "%d", SERVMSG_CMD_CODE);
+                            // sprintf(&buf[CMDCODE_SIZE], "%s", serv_name);
+                            // sprintf(&buf[CMDCODE_SIZE + NAME_SIZE], "\033[33mStarted private chat!");    // \033[0m 마감 처리는 클라이언트에서 함
+
+                            // write(client[i], buf, BUF_SIZE);
+                            // write(client[resp_to], buf, BUF_SIZE);
                         }
 
                         else
@@ -1705,7 +1720,7 @@ int main(int argc, char **argv)
                             sprintf(message, "\033[33m%s joined the chat!", names[i]);
 
                             client_data[i].logon_status = 1; //로그온 상태로 전환
-                            // sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, message, message);
+                            sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, message, message);
 
                             memberlist_serialize_sendAll(clnt_cnt);
                         }
