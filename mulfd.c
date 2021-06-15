@@ -425,7 +425,7 @@ void check_append_Func(char *msg, char *mdest,int clnt_cnt)
 	char *index;
 	char message[MSG_SIZE];
 	char getNum[3];
-	char pickMsg[] = "\r\n나만 아니면 돼!!!!!!\r\n이번 당번은.....  ";
+	char pickMsg[] = "\r\n나만 아니면 돼!!!!!!\r\n이번 당번은.....  \033[7m ";
 
 	while (index = strstr(msg, "/dice"))
 	{
@@ -438,7 +438,9 @@ void check_append_Func(char *msg, char *mdest,int clnt_cnt)
 		itoa(randnum, getNum);
 
 		strcpy(message, dice_message[(randnum-1) / 10]);
+		strcat(message, "\033[7m ");
 		strcat(message, getNum);
+		strcat(message, " \033[27m");
 		strcat(message, "\r\n");
 		strcat(msg, message);
 
@@ -456,6 +458,7 @@ void check_append_Func(char *msg, char *mdest,int clnt_cnt)
 		randnum = rand() % clnt_cnt; // 랜덤 클라 번호 반환
 		strcpy(message, pickMsg);
 		strcat(message, names[randnum]);
+		strcat(message, " \033[27m");
 		strcat(msg, message);
 		printf("%d sadfasf",randnum);
 
