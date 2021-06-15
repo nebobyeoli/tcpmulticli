@@ -59,6 +59,8 @@ int global_curpos = 0;
 
 int MEMBER_SRL = -1;    // -1: 미지정
 
+int named_client_count = 0;
+
 /* 실제 입력 관리: 이중 리스트 api 사용하였다.
  * 엔터를 쳤을 때 blist 또는 clist의 데이터를 buf[]로 저장하고,
  * 해당 리스트를 초기화한다.
@@ -753,22 +755,28 @@ int isKeyboardWriting()
     return !list_is_empty(blist);
 }
 
+void print_available_clients(int isFirstPrint)
+{
+    if (!isFirstPrint) moveCursorUp(named_client_count + 3, 1, 0);
+    else printf("\n");
+
+    int i;
+    for (i = 0; i < MAX_SOCKS && client_data[i].nick[0]; i++)
+        printf("SRL %d (%s)\n", i, client_data[i].nick);
+    printf("TOTAL NAMED CLIENTS: %d\r\n\n", i);
+
+    named_client_count = i;
+    printf("%s", cmd_message);
+    fflush(0);
+}
+
 //Modify
 void firstScene()//First Scene->메인화면 출력
 {
     chat_status = 0; // 채팅상태 idle
 
-	printf("============================ Welcome To Chating =======================================\r\n");
+	printf("==================== Welcome To Chating ====================\r\n");
 	for (int i = 0; i < 3; i++) printf("\r\n");
-	
-    for(int i = 0; i < MAX_SOCKS; i++)
-    {
-        if(i == MEMBER_SRL) continue; // 자기는 출력 안함
-        if(client_data[i].logon_status == 1) // 로그온 되어있는 사용자라면
-        {
-            printf("%d. %s %s\r\n", i, client_data[i].nick, (client_data[i].chat_status > 0) ? "(채팅중)" : "");
-        }
-    }
 
 	printf("- 개인채팅 사용방법 : 닉네임 앞 숫자 입력");
 	//유저리스트 받아서 적는부분
@@ -778,7 +786,7 @@ void firstScene()//First Scene->메인화면 출력
 	printf("<Group chatting>\n");
 	printf("- 그룹채팅 사용방법 : c(채널번호)      ex)c12 : 12번 채널\r\n");
 	for (int i = 0; i < 3; i++) printf("\r\n");
-	printf("=======================================================================================\r\n");
+	printf("============================================================\r\n");
 }
 
 int main(int argc, char *argv[])
@@ -935,7 +943,7 @@ int main(int argc, char *argv[])
     clientListProcess(message); // 클라이언트 리스트 받아옴
 
 	firstScene();
-    printf("\n\n\n%s", cmd_message);
+    print_available_clients(1);
     fflush(stdout);
 
     FD_ZERO(&readfds);
@@ -983,6 +991,8 @@ int main(int argc, char *argv[])
                     sprintf(listget, "%d", HEARTBEAT_REQ_CODE);
                     write(sock, listget, BUF_SIZE);
                     read(sock, message, BUF_SIZE);
+
+                    print_available_clients(0);
 
                     clientListProcess(message); // 클라이언트 리스트 받아옴
                 }

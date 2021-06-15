@@ -929,6 +929,9 @@ int main(int argc, char **argv)
         exit(1);
     }
 
+    for (int i = 0; i < MAX_SOCKS; i++)
+        memset(client_data[i].nick, 0, sizeof(client_data[i].nick));
+
     // https://stackoverflow.com/a/34550798
     DIR *dirp = opendir("./emojis");
     static struct dirent *dir;
@@ -1548,6 +1551,7 @@ int main(int argc, char **argv)
                         sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, message, message);
 
                         memset(names[i], 0, NAME_SIZE);
+                        memset(client_data[i].nick, 0, NAME_SIZE);
                     }
                 }
 
