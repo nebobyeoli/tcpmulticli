@@ -763,9 +763,10 @@ void firstScene()//First Scene->메인화면 출력
 	
     for(int i = 0; i < MAX_SOCKS; i++)
     {
+        if(i == MEMBER_SRL) continue; // 자기는 출력 안함
         if(client_data[i].logon_status == 1) // 로그온 되어있는 사용자라면
         {
-            printf("%d. %s\r\n", i, client_data[i].nick);
+            printf("%d. %s %s\r\n", i, client_data[i].nick, (client_data[i].chat_status > 0) ? "(채팅중)" : "");
         }
     }
 
@@ -1114,6 +1115,14 @@ int main(int argc, char *argv[])
                             fflush(0);
                             continue;
                         }
+
+                        if(client_data[req_to].chat_status > 0)
+                        {
+                            moveCursorUp(2, 0, 0);
+                            printf("\033[1;33m해당 유저는 채팅중입니다\033[0m\n> ");
+                            fflush(0);
+                            continue;
+                        }
                         
                         send_singlechat_request(req_to);
 
@@ -1196,11 +1205,9 @@ int main(int argc, char *argv[])
                 char listget[BUF_SIZE] = {0,};
                 sprintf(listget, "%d", HEARTBEAT_REQ_CODE);
                 write(sock, listget, BUF_SIZE);
+                read(sock, message, BUF_SIZE);
 
-                char message2[BUF_SIZE] = {0,};
-                read(sock, message2, BUF_SIZE);
-
-                clientListProcess(message2); // 클라이언트 리스트 받아옴
+                clientListProcess(message); // 클라이언트 리스트 받아옴
             }
 
             else if (cmdcode == SERVMSG_CMD_CODE || cmdcode == OPENCHAT_CMD_CODE || cmdcode == SINGLECHAT_CMD_CODE)
