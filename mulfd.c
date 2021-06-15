@@ -419,12 +419,13 @@ void check_append_emojis(char *msg, char *mdest)
     fflush(stdout);
 }
 
-void check_append_dice(char *msg, char *mdest)
+void check_append_Func(char *msg, char *mdest,int clnt_cnt)
 {
 	int randnum; // 랜덤변수
 	char *index;
 	char message[MSG_SIZE];
 	char getNum[3];
+	char pickMsg[] = "\r\n나만 아니면 돼!!!!!!\r\n이번 당번은.....  ";
 
 	while (index = strstr(msg, "/dice"))
 	{
@@ -442,6 +443,23 @@ void check_append_dice(char *msg, char *mdest)
 		strcat(msg, message);
 
         memcpy(mdest, msg, MSG_SIZE);
+	}
+	if (index = strstr(msg, "/pickme")) // 픽미는 단일로 써야만 작동하게 할 것임. dice나 이모티콘이랑 섞이면 헷갈릴수 있음)
+	{
+		memset(message, 0, MSG_SIZE);
+
+		unsigned int remaining_len = strlen(&index[7]);
+
+		memcpy(index, &index[7], remaining_len);
+		memset(&index[remaining_len], 0, remaining_len + 1);
+
+		randnum = rand() % clnt_cnt; // 랜덤 클라 번호 반환
+		strcpy(message, pickMsg);
+		strcat(message, names[randnum]);
+		strcat(msg, message);
+		printf("%d sadfasf",randnum);
+
+		memcpy(mdest, msg, MSG_SIZE);
 	}
 }
 
@@ -1415,7 +1433,7 @@ int main(int argc, char **argv)
                         check_append_emojis(buf, mdest);
 
                         // CHECK FOR DICE
-						check_append_dice(mdest[0] ? mdest : buf, mdest);
+						check_append_Func(mdest[0] ? mdest : buf, mdest,clnt_cnt);
 
                         memcpy(&umdest[strlen(umdest)], mdest, strlen(mdest));  // but also only while strlen(mdest) < MSG_SIZE - 24.
                         if (mdest[0]) strcat(umdest, "\r\n");
@@ -1744,7 +1762,7 @@ int main(int argc, char **argv)
                         check_append_emojis(msg, mdest);
 
                         // CHECK FOR DICE
-						check_append_dice(mdest[0] ? mdest : msg, mdest);
+						check_append_Func(mdest[0] ? mdest : msg, mdest,clnt_cnt);
 
                         memset(message, 0, BUF_SIZE);
 
