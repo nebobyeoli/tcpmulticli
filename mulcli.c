@@ -1299,9 +1299,6 @@ int main(int argc, char *argv[])
                         memset(cmd, 0, CMD_SIZE);
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
                         cmdmode = 0;
-
-						//Modify
-						firstScene(); // 메인화면 다시 띄우기
                     }
 
                     else
