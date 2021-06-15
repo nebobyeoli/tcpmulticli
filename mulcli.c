@@ -930,7 +930,7 @@ int main(int argc, char *argv[])
     int is_init = 1;
 
     fflush(0);
-    read(sock, message, BUF_SIZE);
+    // read(sock, message, BUF_SIZE);
 
     //// FIRST 메인 화면 출력
 
@@ -992,9 +992,17 @@ int main(int argc, char *argv[])
                     write(sock, listget, BUF_SIZE);
                     read(sock, message, BUF_SIZE);
 
+                    clientListProcess(message); // 클라이언트 리스트 받아옴
+
+                    print_available_clients(0);
+                }
+
+                else if (cmdcode == HEARTBEAT_STR_CODE)
+                {
+                    clientListProcess(buf);
+
                     print_available_clients(0);
 
-                    clientListProcess(message); // 클라이언트 리스트 받아옴
                 }
 
                 else if (cmdcode == SINGLECHAT_REQ_CODE)

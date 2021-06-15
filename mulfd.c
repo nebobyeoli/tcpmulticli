@@ -61,6 +61,10 @@
 
 int global_curpos = 0;
 
+time_t inittime;    // 서버가 시작된 시각
+time_t lasttime;    // 마지막 heartbeat 시각
+time_t now;         // 실시간 시각 (메인 반복문에서 매 순간 갱신)
+
 // 지정된 멀티캐스팅 주소
 char mulcast_addr[] = "239.0.100.1";
 
@@ -922,6 +926,20 @@ void clientListSerialize(char *message)
     memcpy(message, &result, BUF_SIZE); // 최종 메세지 저장
 }
 
+void memberlist_serialize_sendAll(int clnt_cnt)
+{
+    // HEARTBEAT_REQ_CODE 실행부처럼
+    char send_message[BUF_SIZE] = {0,};
+    clientListSerialize(send_message);
+    for (int i = 0; i < clnt_cnt; i++)
+    {
+        if (client[i] < 0 || names[i][0] == 0) continue;
+
+        write(client[i], send_message, BUF_SIZE);
+        printf(">> MemberList Sent      at [t: %ld] to   %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
+    }
+}
+
 int main(int argc, char **argv)
 {
     if (argc != 2) {
@@ -936,10 +954,6 @@ int main(int argc, char **argv)
     DIR *dirp = opendir("./emojis");
     static struct dirent *dir;
 
-    time_t inittime;    // 서버가 시작된 시각
-    time_t lasttime;    // 마지막 heartbeat 시각
-    time_t now;         // 실시간 시각 (메인 반복문에서 매 순간 갱신)
-    
     int serv_sock, clnt_sock;
     int state = 0;              // 초기 연결 때의 오류 여부, 그 이후에는 클라이언트 상태 저장 용도로써 사용
     struct ip_mreq join_addr;   // 멀티캐스트 주소 저장
@@ -1548,10 +1562,13 @@ int main(int argc, char **argv)
                         // SEND DISCONNECTED INFORMATION TO ALL CLIENTS
                         memset(message, 0, BUF_SIZE);
                         sprintf(message, "\033[33m%s left the chat.", names[i]);
+
                         sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, message, message);
 
                         memset(names[i], 0, NAME_SIZE);
                         memset(client_data[i].nick, 0, NAME_SIZE);
+
+                        memberlist_serialize_sendAll(clnt_cnt);
                     }
                 }
 
@@ -1604,7 +1621,7 @@ int main(int argc, char **argv)
                         clientListSerialize(send_message);
 
                         write(client[i], send_message, BUF_SIZE);
-                        printf(">> MemberList Sended at [t: %ld] from %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
+                        printf(">> MemberList Sent      at [t: %ld] to   %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
                     }
 
                     //// MODE : SINGLECHAT Request from client ////
@@ -1688,7 +1705,9 @@ int main(int argc, char **argv)
                             sprintf(message, "\033[33m%s joined the chat!", names[i]);
 
                             client_data[i].logon_status = 1; //로그온 상태로 전환
-                            sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, message, message);
+                            // sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, message, message);
+
+                            memberlist_serialize_sendAll(clnt_cnt);
                         }
                     }
 
