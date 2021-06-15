@@ -977,6 +977,13 @@ int main(int argc, char *argv[])
                     heartbeatSerialize(message, &hbp);
 
                     write(sock, message, BUF_SIZE);
+
+                    char listget[BUF_SIZE] = {0,};
+                    sprintf(listget, "%d", HEARTBEAT_REQ_CODE);
+                    write(sock, listget, BUF_SIZE);
+                    read(sock, message, BUF_SIZE);
+
+                    clientListProcess(message); // 클라이언트 리스트 받아옴
                 }
 
                 else if (cmdcode == SINGLECHAT_REQ_CODE)

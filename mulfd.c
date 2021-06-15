@@ -1600,7 +1600,7 @@ int main(int argc, char **argv)
                         clientListSerialize(send_message);
 
                         write(client[i], send_message, BUF_SIZE);
-                        printf("<< MemberList Sended at [t: %ld] from %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
+                        printf(">> MemberList Sended at [t: %ld] from %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
                     }
 
                     //// MODE : SINGLECHAT Request from client ////
