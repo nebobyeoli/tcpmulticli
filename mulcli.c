@@ -984,7 +984,7 @@ int main(int argc, char *argv[])
                     req_from = atoi(&buf[4]);
 
                     moveCursorUp(1, 1, 0);
-                    printf("Client %d (클라정보 nick[i]) requested a private chat. Accept? [y/n]:\n> ", req_from);
+                    printf("Client %d (%s) requested a private chat. Accept? [y/n]:\n> ", req_from, client_data[req_from].nick);
                     
                     fflush(0);
 
@@ -1001,7 +1001,7 @@ int main(int argc, char *argv[])
 
                         if (atoi(&buf[CMDCODE_SIZE * 2]))  // Is existing client
                         {
-                            printf("%d is an existing client. Waiting for response...\n", req_to);
+                            printf("%d (%s) is an existing client. Waiting for response...\n", req_to, client_data[req_to].nick);
                             fflush(0);
 
                             waiting_for_target = 1;
@@ -1009,7 +1009,7 @@ int main(int argc, char *argv[])
 
                         else
                         {
-                            printf("%d is not an existing client.\n> ", req_to);
+                            printf("%d (%s) is not an existing client.\n> ", req_to, client_data[req_to].nick);
                             fflush(0);
                         }
                     }
@@ -1022,7 +1022,7 @@ int main(int argc, char *argv[])
                         if (accepted)
                         {
                             moveCursorUp(0, 1, 0);
-                            printf("%d (클라정보 nick[i]) accepted the chat request.\n", req_to);
+                            printf("%d (%s) accepted the chat request.\n", req_to, client_data[req_to].nick);
                             fflush(0);
 
                             client_data[MEMBER_SRL].target = req_to;
@@ -1037,7 +1037,7 @@ int main(int argc, char *argv[])
                         else
                         {
                             moveCursorUp(1, 1, 0);
-                            printf("%d (클라정보 nick[i]) declined the chat request.\n> ", req_to);
+                            printf("%d (%s) declined the chat request.\n> ", req_to, client_data[req_to].nick);
                             fflush(0);
                         }
                     }
@@ -1062,6 +1062,9 @@ int main(int argc, char *argv[])
                         
                         client_data[MEMBER_SRL].target = req_from;
                         client_data[req_from].target = MEMBER_SRL;
+                        chat_status = 1;
+                        chat_target = req_from;
+                        
                         printf("Accepted chat request.\n");
 
                         // 이제 채팅할 수 있다.
@@ -1227,7 +1230,7 @@ int main(int argc, char *argv[])
 
                     if (cmdcode == SINGLECHAT_CMD_CODE)
                     {
-                        printf("\r\n\033[1m%d (names 받아서 대체 필요)\033[0m sent: %s\r\n", client_data[MEMBER_SRL].target, &message[CMDCODE_SIZE * 3]);
+                        printf("\r\n\033[1m%s\033[0m : %s\r\n", client_data[chat_target].nick, &message[CMDCODE_SIZE * 3]);
                         fflush(stdout);
                     }
                 }
@@ -1502,17 +1505,20 @@ int main(int argc, char *argv[])
                         // 숫자로 시작하면
                         if (cmd[0] > 47 && cmd[0] < 58)
                         {
+                            printf("starts in num\r\n");
                             // ...
                         }
                         
                         // 'c'로 시작하면
                         else if (cmd[0] == 'c')
                         {
+                            printf("starts in c\r\n");
                             // ...
                         }
 
                         else
                         {
+                            printf("command fail\r\n");
                             // ...
                         }
                     }
@@ -1545,7 +1551,7 @@ int main(int argc, char *argv[])
                         if (servmsg_printed) servmsg_printed = 0;
 
                         // printf("\r\n%s sent: %s\r\n", sender, message); // original
-                        printf("\r\n\033[1m%d (names 받아서 대체 필요)\033[0m sent: %s\r\n", MEMBER_SRL, &buf[CMDCODE_SIZE * 3]);
+                        printf("\r\n\033[1m%s\033[0m : %s\r\n", client_data[MEMBER_SRL].nick, &buf[CMDCODE_SIZE * 3]);
 
                         global_curpos = 0;
 
