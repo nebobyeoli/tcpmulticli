@@ -23,8 +23,8 @@
 
 //// 마지막에 아래 정리해서 아래 변수들 함수들 헤더랑 따로 만들어서 담을 것
 
-#define BUF_SIZE        1024 * 4    // 임시 크기(1024 * n): 수신 시작과 끝에 대한 cmdcode 추가 사용 >> MMS 수신 구현 전까지
-#define MSG_SIZE        2000
+#define BUF_SIZE        1024 * 10    // 임시 크기(1024 * n): 수신 시작과 끝에 대한 cmdcode 추가 사용 >> MMS 수신 구현 전까지
+#define MSG_SIZE        1000 * 10
 #define CMDCODE_SIZE    4           // cmdcode의 크기
 #define CMD_SIZE        20          // cmdmode에서의 명령어 최대 크기
 #define NAME_SIZE       30          // 닉네임 최대 길이
@@ -75,6 +75,9 @@ char mulcast_addr[] = "239.0.100.1";
 
 int sock;                   // 서버 소켓
 char nname[NAME_SIZE];      // 자기 자신의 닉네임
+
+int chat_status = 0; //idle = 0, personal_chat = 1, channel_chat = 2
+int chat_target = 0; //타겟 번호. 개인채팅이면 타겟 member_srl, 단체면 channel
 
 // prompt-print message, 즉 '입력 문구'
 char pp_message[] = "Input message(CTRL+C to quit):\r\n";
@@ -744,14 +747,29 @@ void clientListProcess(char* message)
     }
 }
 
+// 키보드 작성중인지 확인
+int isKeyboardWriting()
+{
+    return !list_is_empty(blist);
+}
 
 //Modify
 void firstScene()//First Scene->메인화면 출력
 {
+    chat_status = 0; // 채팅상태 idle
+
 	printf("============================ Welcome To Chating =======================================\r\n");
 	for (int i = 0; i < 3; i++) printf("\r\n");
-	printf("<User List>\r\n");
-	printf("- 개인채팅 사용방법 : (~~~~) 입력");
+	
+    for(int i = 0; i < MAX_SOCKS; i++)
+    {
+        if(client_data[i].logon_status == 1) // 로그온 되어있는 사용자라면
+        {
+            printf("%d. %s\r\n", i, client_data[i].nick);
+        }
+    }
+
+	printf("- 개인채팅 사용방법 : 닉네임 앞 숫자 입력");
 	//유저리스트 받아서 적는부분
 
 	//
@@ -761,8 +779,6 @@ void firstScene()//First Scene->메인화면 출력
 	for (int i = 0; i < 3; i++) printf("\r\n");
 	printf("=======================================================================================\r\n");
 }
-
-
 
 int main(int argc, char *argv[])
 {
@@ -1146,15 +1162,22 @@ int main(int argc, char *argv[])
             {
                 struct HeartBeatPacket hbp;
                 hbp.cmd_code = HEARTBEAT_CMD_CODE;
-                hbp.member_srl = 0; // @todo 서버로부터 받아온 member_srl을 넣기
-                hbp.chat_status = 1;
-                hbp.target = 2;
-                hbp.is_chatting = 1;
+                hbp.member_srl = MEMBER_SRL;
+                hbp.chat_status = chat_status;
+                hbp.target = chat_target;
+                hbp.is_chatting = isKeyboardWriting();
 
                 char message[BUF_SIZE] = {0,};
                 heartbeatSerialize(message, &hbp);
 
                 write(sock, message, BUF_SIZE);
+
+                char listget[10] = {0,};
+                sprintf(listget, "%d", HEARTBEAT_REQ_CODE);
+                write(sock, listget, BUF_SIZE);
+                read(sock, message, BUF_SIZE);
+
+                clientListProcess(message); // 클라이언트 리스트 받아옴
             }
 
             else if (cmdcode == SERVMSG_CMD_CODE || cmdcode == OPENCHAT_CMD_CODE || cmdcode == SINGLECHAT_CMD_CODE)
