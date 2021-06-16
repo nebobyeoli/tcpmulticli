@@ -33,12 +33,15 @@
 #define MAX_SOCKS           100         // 최대 연결 가능 클라이언트 수
 #define ACCEPT_MSG_SIZE     5           // 1 + sizeof(int)
 
+#define EMOJI_VARIANT_MAX       30      // 최대 사용 가능 이모티콘 (txt) 수
+#define EMOJI_TITLELEN_MAX      10      // 이모티콘(명령명) 최대 길이
+
 #define GETSERVMSG_TIMEOUT_SEC  0
 #define GETSERVMSG_TIMEOUT_USEC 10000   // 1000000 usec = 1 sec
 #define HEARTBEAT_INTERVAL      3       // HEARTBEAT 간격 (초 단위)
 
-#define MIN_ERASE_LINES     1           // 각 출력 사이의 줄 간격 - 앞서 출력된 '입력 문구'를 포함하여, 다음 메시지 출력 전에 지울 줄 수
-#define PP_LINE_SPACE       3           // 최솟값: 1  // 출력되는 메시지들과 '입력 문구' 사이 줄 간격
+#define MIN_ERASE_LINES         1       // 각 출력 사이의 줄 간격 - 앞서 출력된 '입력 문구'를 포함하여, 다음 메시지 출력 전에 지울 줄 수
+#define PP_LINE_SPACE           3       // 최솟값: 1  // 출력되는 메시지들과 '입력 문구' 사이 줄 간격
 
 #define SERVMSG_CMD_CODE        1000
 
@@ -56,8 +59,7 @@
 #define OPENCHAT_CMD_CODE       3000
 #define SINGLECHAT_CMD_CODE     3001
 
-#define EMOJI_VARIANT_MAX   30      // 최대 사용 가능 이모티콘 (txt) 수
-#define EMOJI_TITLELEN_MAX  10      // 이모티콘(명령명) 최대 길이
+#define SERVCLOSED_CMD_CODE     4000
 
 int global_curpos = 0;
 
