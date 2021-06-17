@@ -72,6 +72,20 @@ sprintf(&message[CMDCODE_SIZE + 1], "%s", sender);
 sprintf(&message[CMDCODE_SIZE + NAME_SIZE + 2], "%s", msg);
 ``` -->
 
+
+# 작동
+
+## 서버
+
+### MESSAGE FROM SERVER
+
+서버를 시작하면 <b>`STARTED TCP SERVER.`</b>의 문구와 함께 사용가능한 이모티콘 목록이 출력된다. 이때부터 서버는 메시지를 전송할 수 있으며, 서버 메시지는 닉네임(`name[]` 또는 `client_data[i].nick[]`)과 통신 상대(`client_data[i].target`)가 설정된 모든 클라이언트에게 전달된다.
+
+### HEARTBEAT
+
+서버는 닉네임이 설정된 클라이언트에 대해 `HEARTBEAT_INTERVAL` 초 간격으로 클라이언트에 `HEARTBEAT`를 요청하고, 이에 응해 클라이언트가 전송한 `HEARTBEAT`를 출력한다. 이때 `HEARTBEAT`는 ~, ~, 를 포함하며 ~의 정보를 제공한다 등등 `영상이 내용 추가 바람(?)`
+
+
 ## Server log info
 
 ```c
