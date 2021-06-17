@@ -1337,12 +1337,14 @@ int main(int argc, char *argv[])
                         memset(cmd, 0, CMD_SIZE);
 
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
+                        global_curpos = getCurposFromListptr(blist, bp);
                         cmdmode = 0;
                     }
 
                     else
                     {
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + getLFcnt(blist), 1, bp);
+                        global_curpos = 0;
                         cmdmode = 1;
                     }
 

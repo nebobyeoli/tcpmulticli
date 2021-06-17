@@ -1310,12 +1310,14 @@ int main(int argc, char **argv)
                         memset(cmd, 0, CMD_SIZE);
 
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
+                        global_curpos = getCurposFromListptr(blist, bp);
                         cmdmode = 0;
                     }
 
                     else
                     {
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + getLFcnt(blist), 1, bp);
+                        global_curpos = 0;
                         cmdmode = 1;
                     }
 
@@ -1510,6 +1512,10 @@ int main(int argc, char **argv)
                         // 명령어에 따른 동작 실행 e.g. 클라이언트 목록 뽑기
                         // cmd[some_index] ...
                         // 
+                        printf("\033[2A\rCommand: %s\033[2B", cmd);
+
+                        printf("\033[2K\r> ");
+                        fflush(0);
                     }
 
                     else
