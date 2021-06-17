@@ -25,26 +25,29 @@
 
 //// 마지막에 아래 정리해서 아래 변수들 함수들 헤더랑 따로 만들어서 담을 것
 
-#define BUF_SIZE        1024 * 10    // 임시 크기(1024 * n): 수신 시작과 끝에 대한 cmdcode 추가 사용 >> MMS 수신 구현 전까지
-#define MSG_SIZE        1000 * 10
-#define CMDCODE_SIZE    4           // cmdcode의 크기
-#define CMD_SIZE        20          // cmdmode에서의 명령어 최대 크기
-#define NAME_SIZE       30          // 닉네임 최대 길이
-#define MAX_SOCKS       100         // 최대 연결 가능 클라이언트 수
-#define ACCEPT_MSG_SIZE  5        // 1 + sizeof(int)
+#define BUF_SIZE            1024 * 10   // 임시 크기(1024 * n): 수신 시작과 끝에 대한 cmdcode 추가 사용 >> MMS 수신 구현 전까지
+#define MSG_SIZE            1000 * 10
+#define CMDCODE_SIZE        4           // cmdcode의 크기
+#define CMD_SIZE            20          // cmdmode에서의 명령어 최대 크기
+#define NAME_SIZE           30          // 닉네임 최대 길이
+#define MAX_SOCKS           100         // 최대 연결 가능 클라이언트 수
+#define ACCEPT_MSG_SIZE     5           // 1 + sizeof(int)
+
+#define EMOJI_VARIANT_MAX       30      // 최대 사용 가능 이모티콘 (txt) 수
+#define EMOJI_TITLELEN_MAX      10      // 이모티콘(명령명) 최대 길이
 
 #define GETSERVMSG_TIMEOUT_SEC  0
 #define GETSERVMSG_TIMEOUT_USEC 10000   // 1000000 usec = 1 sec
 #define HEARTBEAT_INTERVAL      3       // HEARTBEAT 간격 (초 단위)
 
-#define MIN_ERASE_LINES     1           // 각 출력 사이의 줄 간격 - 앞서 출력된 '입력 문구'를 포함하여, 다음 메시지 출력 전에 지울 줄 수
-#define PP_LINE_SPACE       3           // 최솟값: 1  // 출력되는 메시지들과 '입력 문구' 사이 줄 간격
+#define MIN_ERASE_LINES         1       // 각 출력 사이의 줄 간격 - 앞서 출력된 '입력 문구'를 포함하여, 다음 메시지 출력 전에 지울 줄 수
+#define PP_LINE_SPACE           3       // 최솟값: 1  // 출력되는 메시지들과 '입력 문구' 사이 줄 간격
 
-#define SERVMSG_CMD_CODE    1000
+#define SERVMSG_CMD_CODE        1000
 
-#define HEARTBEAT_CMD_CODE  1500
-#define HEARTBEAT_REQ_CODE  1501
-#define HEARTBEAT_STR_CODE  1502
+#define HEARTBEAT_CMD_CODE      1500
+#define HEARTBEAT_REQ_CODE      1501
+#define HEARTBEAT_STR_CODE      1502
 
 #define SINGLECHAT_REQ_CODE     1600
 #define SINGLECHAT_RESP_CODE    1601
@@ -56,10 +59,12 @@
 #define OPENCHAT_CMD_CODE       3000
 #define SINGLECHAT_CMD_CODE     3001
 
-#define EMOJI_VARIANT_MAX   30      // 최대 사용 가능 이모티콘 (txt) 수
-#define EMOJI_TITLELEN_MAX  10      // 이모티콘(명령명) 최대 길이
+#define SERVCLOSED_CMD_CODE     4000
 
 int global_curpos = 0;
+
+// COMMAND MODE: ESC 눌러서 실행
+int cmdmode = 0;
 
 time_t inittime;    // 서버가 시작된 시각
 time_t lasttime;    // 마지막 heartbeat 시각
@@ -68,14 +73,24 @@ time_t now;         // 실시간 시각 (메인 반복문에서 매 순간 갱�
 // 지정된 멀티캐스팅 주소
 char mulcast_addr[] = "239.0.100.1";
 
-int client[MAX_SOCKS];                  // 클라이언트 연결 저장 배열
-char names[MAX_SOCKS][NAME_SIZE];       // 닉네임 저장 배열
+int client[MAX_SOCKS];              // 클라이언트 연결 저장 배열
+char names[MAX_SOCKS][NAME_SIZE];   // 닉네임 저장 배열
 
 // prompt-print message, 즉 '입력 문구'
-char pp_message[] = "Input message(CTRL+C to quit):\r\n";
+char pp_message[] = "Input message(CTRL+C to quit CHAT):\r\n";
 
 // command mode message, 즉 cmd mode에서의 입력 문구
-char cmd_message[] = "Enter command(ESC to quit):\r\n> ";
+char cmd_message[] = "Enter command(ESC to exit CMDMODE):\r\n> ";
+
+/* 실제 입력 관리: 이중 리스트 api 사용하였다.
+ * 엔터를 쳤을 때 blist 또는 clist의 데이터를 buf[]로 저장하고,
+ * 해당 리스트를 초기화한다.
+ */
+list_t      *blist;     // buf_list
+list_node_t *bp;        // buf_list_pointer
+
+list_t      *clist;     // cmd_list
+list_node_t *cp;        // cmd_list_pointer
 
 char* dice_message[10] = {
     "\r\n뭐야 내 주사위 돌려줘요.\r\n나온 숫자 : ",
@@ -94,20 +109,21 @@ int emojiCnt = 0;
 
 struct
 {
-    char title[EMOJI_TITLELEN_MAX];
-    unsigned int len;   // return type of ftell
+    char title[EMOJI_TITLELEN_MAX];     // 이모티콘 파일명 저장
+    unsigned int len;                   // long int ftell(FILE* stream)
+
 } emojis[EMOJI_VARIANT_MAX];
 
 struct sClient
 {
-    int logon_status; // logon 되어있으면 1, 아니면 0
+    int logon_status;               // logon 되어있으면 1, 아니면 0
     char nick[NAME_SIZE];
-    int chat_status;          //idle = 0, personal_chat = 1, channel_chat = 2
-    int target;              //타겟 번호. 개인채팅이면 타겟 member_srl, 단체면 channel
-    int is_chatting;        // 채팅 중인지
-    time_t last_heartbeat_time; //마지막 heartbeat을 받은 시간
-} client_data[MAX_SOCKS];
-// member_srl은 client_data[i] 에서 i이다.
+    int chat_status;                // idle = 0, personal_chat = 1, channel_chat = 2
+    int target;                     // 타겟 번호. 개인채팅이면 타겟 member_srl, 단체면 channel
+    int is_chatting;                // 채팅 중인지
+    time_t last_heartbeat_time;     // 마지막 heartbeat을 받은 시간
+
+} client_data[MAX_SOCKS];           // member_srl은 client_data[i] 에서 i이다.
 
 struct HeartBeatPacket
 {
@@ -170,7 +186,7 @@ void sendAll(int clnt_cnt, int cmdcode, char *sender, char *msg, char *servlog)
 
 void send_singlechat_request(int from, int to_sock)
 {
-    char pass[CMDCODE_SIZE * 2] = { 0, };
+    char pass[CMDCODE_SIZE * 2] = {0,};
 
     sprintf(pass, "%d", SINGLECHAT_REQ_CODE);
     sprintf(&pass[CMDCODE_SIZE], "%d", from);
@@ -179,7 +195,7 @@ void send_singlechat_request(int from, int to_sock)
 
 void send_singlechat_response(int from, int to_sock, int accepted)
 {
-    char pass[CMDCODE_SIZE * 3] = { 0, };
+    char pass[CMDCODE_SIZE * 3] = {0,};
 
     sprintf(pass, "%d", SINGLECHAT_RESP_CODE);
     sprintf(&pass[CMDCODE_SIZE], "%d", from);
@@ -190,7 +206,7 @@ void send_singlechat_response(int from, int to_sock, int accepted)
 // singlechat <요청>에 대한 항목 추출
 void extract_singlechat_response(char *buf, int *member_srl, int *accepted)
 {
-    char tmp[4] = { 0, };
+    char tmp[4] = {0,};
 
     memcpy(tmp, &buf[CMDCODE_SIZE * 1], 4);
     *member_srl = atoi(tmp);
@@ -421,49 +437,51 @@ void check_append_emojis(char *msg, char *mdest)
 
 void check_append_Func(char *msg, char *mdest,int clnt_cnt)
 {
-	int randnum; // 랜덤변수
-	char *index;
-	char message[MSG_SIZE];
-	char getNum[3];
-	char pickMsg[] = "\r\n나만 아니면 돼!!!!!!\r\n이번 당번은.....  \033[7m ";
+    int randnum; // 랜덤변수
+    char *index;
+    char message[MSG_SIZE];
+    char getNum[3];
+    char pickMsg[] = "\r\n나만 아니면 돼!!!!!!\r\n이번 당번은.....  \033[7m ";
 
-	while (index = strstr(msg, "/dice"))
-	{
+    while (index = strstr(msg, "/dice"))
+    {
         unsigned int remaining_len = strlen(&index[5]);
 
         memcpy(index, &index[5], remaining_len);
         memset(&index[remaining_len], 0, remaining_len + 1);
 
-		randnum = rand() % 100 + 1; // 0~99
-		itoa(randnum, getNum);
+        randnum = rand() % 100 + 1; // 0~99
+        itoa(randnum, getNum);
 
-		strcpy(message, dice_message[(randnum-1) / 10]);
-		strcat(message, "\033[7m ");
-		strcat(message, getNum);
-		strcat(message, " \033[27m");
-		strcat(message, "\r\n");
-		strcat(msg, message);
+        strcpy(message, dice_message[(randnum-1) / 10]);
+        strcat(message, "\033[7m ");
+        strcat(message, getNum);
+        strcat(message, " \033[27m");
+        strcat(message, "\r\n");
+        strcat(msg, message);
 
         memcpy(mdest, msg, MSG_SIZE);
-	}
-	if (index = strstr(msg, "/pickme")) // 픽미는 단일로 써야만 작동하게 할 것임. dice나 이모티콘이랑 섞이면 헷갈릴수 있음)
-	{
-		memset(message, 0, MSG_SIZE);
+    }
 
-		unsigned int remaining_len = strlen(&index[7]);
+    if (index = strstr(msg, "/pickme")) // 픽미는 단일로 써야만 작동하게 할 것임. dice나 이모티콘이랑 섞이면 헷갈릴수 있음)
+    {
+        memset(message, 0, MSG_SIZE);
 
-		memcpy(index, &index[7], remaining_len);
-		memset(&index[remaining_len], 0, remaining_len + 1);
+        unsigned int remaining_len = strlen(&index[7]);
 
-		randnum = rand() % clnt_cnt; // 랜덤 클라 번호 반환
-		strcpy(message, pickMsg);
-		strcat(message, names[randnum]);
-		strcat(message, " \033[27m");
-		strcat(msg, message);
-		printf("%d sadfasf",randnum);
+        memcpy(index, &index[7], remaining_len);
+        memset(&index[remaining_len], 0, remaining_len + 1);
 
-		memcpy(mdest, msg, MSG_SIZE);
-	}
+        // 클라이언트 번호 랜덤 선택 후 반환
+        randnum = rand() % clnt_cnt;
+
+        strcpy(message, pickMsg);
+        strcat(message, names[randnum]);
+        strcat(message, " \033[27m");
+        strcat(msg, message);
+
+        memcpy(mdest, msg, MSG_SIZE);
+    }
 }
 
 // USAGE OF HORIZONTAL CURSOR MOVEMENT - BY BLOCKS
@@ -671,7 +689,7 @@ list_node_t* transfer_list_data(char *buf, list_t *list, int emptylist)
     {
         list_destroy(list);
         list = list_new();
-        
+
         list_rpush(list, list_node_new(0));
     }
 
@@ -785,7 +803,7 @@ int getch()
 {
     // 키 하나 눌렀을 때 반환되는 정수들
     // 추가 키 사용할 때마다 그 키의 반환 개수에 따라 배열 길이 늘려서 사용할 수 있음!
-    char c[7] = { 0, };
+    char c[7] = {0,};
 
     // 어쩌다 kbhit()까지 확인했는데도 read()할 거 없으면 그냥 그거 반환하기로
     int r;
@@ -850,7 +868,7 @@ int getch()
 
 void disassembleHeartBeatPacket(char *message, struct HeartBeatPacket *hbp)
 {
-    char tmp[5]={0,};
+    char tmp[5] = {0,};
     int offset = 0;
 
     memcpy(&tmp, &message, sizeof(int));
@@ -952,12 +970,13 @@ void memberlist_serialize_sendAll(int clnt_cnt)
     // HEARTBEAT_REQ_CODE 실행부처럼
     char send_message[BUF_SIZE] = {0,};
     clientListSerialize(send_message);
+
     for (int i = 0; i < clnt_cnt; i++)
     {
         if (client[i] < 0 || names[i][0] == 0) continue;
 
         write(client[i], send_message, BUF_SIZE);
-        printf("\033[1;34m>>\033[0m MemberList Sent      at [t: %ld] to   %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
+        printf("\033[1;34m>>\033[0m MemberList \033[1;34mSent\033[0m      at [t: %ld] to   %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
     }
 }
 
@@ -985,7 +1004,11 @@ int main(int argc, char **argv)
 
     struct timeval ti;          // timeval_(std)input - 입력값에 대한 타임아웃 구조체
     fd_set readfds, allfds;     // 클라이언트 배열 순회 용도, 둘의 정확한 차이나 용도는 불명
-    
+
+    int i, j;
+    int clnt_size, clnt_cnt;
+    int fd_max;
+
     /* buf[]와 message[]의 용도 규칙은 따로 없으나
      * 보통 입력 저장 및 임시 저장소는 buf[],
      * NULL칸으로 분리된 형식의 수신/전송용 메시지는 message[]를 사용.
@@ -995,45 +1018,28 @@ int main(int argc, char **argv)
     char message[BUF_SIZE];
     char cmd[CMD_SIZE];
 
-    /* 실제 입력 관리: 이중 리스트 api 사용.
-     * 엔터를 쳤을 때 blist 또는 clist의 데이터를 buf[]로 저장하고,
-     * 해당 리스트를 초기화한다.
-     */
-    list_t *blist = list_new();     // buf_list
-    list_node_t *bp;                // buf_list_pointer
-
+    blist = list_new();
     list_rpush(blist, list_node_new(0));    // blist->HEAD
     bp = blist->head;
 
-    list_t *clist = list_new();     // cmd_list
-    list_node_t *cp;                // cmd_list_pointer
-
+    clist = list_new();
     list_rpush(clist, list_node_new(0));    // clist->HEAD
     cp = clist->head;
-
-    /* sendAll()의 사용 형식에 맞추기 위한 '서버 이름'.
-     * sendAll()에 사용할 때는 char *sender 인자에 넣으면 됨
-     */
-    char serv_name[NAME_SIZE] = "SERVER";
-    
-    int i, j;
-    int clnt_size, clnt_cnt;
-    int fd_max;
 
     /* 필요할 때만 '입력 문구'를 출력하도록 함.
      * 코드 진행 이후 '입력 문구'의 출력이 필요할 때는 prompt_printed = 1 실행
      */
     int prompt_printed = 0;
 
-    /* COMMAND MODE
-     * ESC 눌러서 실행
+    /* sendAll()의 사용 형식에 맞추기 위한 '서버 이름'.
+     * sendAll()에 사용할 때는 char *sender 인자에 넣으면 됨
      */
-    int cmdmode = 0;
+    char serv_name[NAME_SIZE] = "SERVER";
 
     // 현재 포트를 address already in use 안 띄우고 재사용할 수 있게 한다 - setsockopt(SO_REUSEADDR)
     int on = 1;
 
-	srand(time(0)); // 랜덤시트 
+    srand(time(0)); // 랜덤시트 
 
     serv_sock = socket(AF_INET, SOCK_STREAM, 0);
     if (serv_sock == -1) perror_exit("socket() error!\n");
@@ -1135,7 +1141,7 @@ int main(int argc, char **argv)
 
             printf("%s", cmdmode ? cmd_message : pp_message);
 
-            if (cmdmode) reprintList(clist, cp, global_curpos);
+            if (cmdmode) reprintList(clist, cp, global_curpos + 2);
             else reprintList(blist, bp, global_curpos);
 
             prompt_printed = 1;
@@ -1170,6 +1176,8 @@ int main(int argc, char **argv)
                 if (names[i][0] == 0) continue;
 
                 if (!has_client) has_client = 1;
+
+                // ///// 수정하기
                 write(client[i], "1500", CMDCODE_SIZE);
                 printf("\r\n\033[1;34m>> HEARTBEAT\033[0m at [t: %ld] to   %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
             }
@@ -1178,7 +1186,7 @@ int main(int argc, char **argv)
             if (has_client) printf("\r\n");
 
             prompt_printed = 0;
-	    }
+        }
 
         // kbhit() 내에서 select() 돌아감, 추가적 select() 필요 없음
         // 그래서 fd_set stdinfd 지움
@@ -1197,6 +1205,16 @@ int main(int argc, char **argv)
                 // 99 & 037
                 case 3:
                 {
+                    // 서버가 종료되었다고 알림
+                    memset(buf, 0, BUF_SIZE);
+                    sprintf(buf, "%d", SERVCLOSED_CMD_CODE);
+                    for (int i = 0; i < clnt_cnt; i++)
+                    {
+                        if (client[i] < 0 || names[i][0] == 0) continue;
+                        write(client[i], buf, BUF_SIZE);
+                        printf("\033[1;34mSent to client\033[0m %d [%d] (%s)\r\n", i, client[i], names[i]);
+                    }
+
                     reset_terminal_mode();
 
                     close(serv_sock);
@@ -1215,8 +1233,17 @@ int main(int argc, char **argv)
                 {
                     if (cmdmode)
                     {
-                        // cmdmode에서 나갈 때
+                        //// cmdmode에서 나갈 때
+
+                        // 입력 버퍼 리스트 초기화
+                        list_destroy(clist);
+                        clist = list_new();
+                        list_rpush(clist, list_node_new(0));
+                        cp = clist->head;
+
+                        // 입력 버퍼 배열 초기화
                         memset(cmd, 0, CMD_SIZE);
+
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
                         cmdmode = 0;
                     }
@@ -1436,7 +1463,7 @@ int main(int argc, char **argv)
                         check_append_emojis(buf, mdest);
 
                         // CHECK FOR DICE
-						check_append_Func(mdest[0] ? mdest : buf, mdest,clnt_cnt);
+                        check_append_Func(mdest[0] ? mdest : buf, mdest,clnt_cnt);
 
                         memcpy(&umdest[strlen(umdest)], mdest, strlen(mdest));  // but also only while strlen(mdest) < MSG_SIZE - 24.
                         if (mdest[0]) strcat(umdest, "\r\n");
@@ -1533,7 +1560,8 @@ int main(int argc, char **argv)
 
             for (i = 0; i < MAX_SOCKS; i++)
             {
-                if (client[i] < 0) {
+                if (client[i] < 0)
+                {
                     client[i] = clnt_sock;
                     printf("Client index: %d\r\n", i);
                     printf("Client FD: %d\r\n", clnt_sock);
@@ -1723,7 +1751,7 @@ int main(int argc, char **argv)
                         {
                             //// 고유 인덱스 i 보내 드림
 
-                            char ACinfo[ACCEPT_MSG_SIZE] = { 0, };
+                            char ACinfo[ACCEPT_MSG_SIZE] = {0,};
                             sprintf(ACinfo, "1");
                             sprintf(&ACinfo[1], "%d", i);
 
@@ -1740,9 +1768,13 @@ int main(int argc, char **argv)
                             memset(message, 0, BUF_SIZE);
                             sprintf(message, "\033[33m%s joined the chat!", names[i]);
 
-                            client_data[i].logon_status = 1; //로그온 상태로 전환
+                            // 로그온 상태로 전환
+                            client_data[i].logon_status = 1;
+
+                            // ~ joined the chat!
                             sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, message, message);
 
+                            // 갱신된 클라이언트 memberlist 전송
                             memberlist_serialize_sendAll(clnt_cnt);
                         }
                     }
@@ -1765,7 +1797,7 @@ int main(int argc, char **argv)
                         check_append_emojis(msg, mdest);
 
                         // CHECK FOR DICE
-						check_append_Func(mdest[0] ? mdest : msg, mdest,clnt_cnt);
+                        check_append_Func(mdest[0] ? mdest : msg, mdest,clnt_cnt);
 
                         memset(message, 0, BUF_SIZE);
 
@@ -1806,7 +1838,7 @@ int main(int argc, char **argv)
                 }
 
                 memset(buf, 0, BUF_SIZE);
-                
+
                 prompt_printed = 0;
 
                 if (--state <= 0) break;
