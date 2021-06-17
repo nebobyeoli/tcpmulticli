@@ -59,6 +59,9 @@
 
 int global_curpos = 0;
 
+// COMMAND MODE: ESC 눌러서 실행
+int cmdmode;
+
 int MEMBER_SRL = -1;    // -1: 미지정
 
 // 처음에 '0'이 아니라 '-1' 되도록 수정함: client 번호는 0부터 시작하기 때문.
@@ -787,14 +790,27 @@ void firstScene()
     printf("\033[1;33m[Private chatting]\033[0m\r\n\n");
     printf("- \033[1m개인채팅 사용방법:\033[0m 닉네임 앞 숫자 입력");
 
-    printf("\r\n\n\n");
-    printf("\033[1;33m[Group chatting]\033[0m\r\n\n");
-    printf("- \033[1m그룹채팅 사용방법:\033[0m c(채널번호)    \033[1mex)\033[0m 12번 채널 가입: [c12]\r\n");
+    // printf("\r\n\n\n");
+    // printf("\033[1;33m[Group chatting]\033[0m\r\n\n");
+    // printf("- \033[1m그룹채팅 사용방법:\033[0m c(채널번호)    \033[1mex)\033[0m 12번 채널 가입: [c12]\r\n");
     printf("\r\n\n\n");
     printf("\033[1;33m==============================================================\033[0m\r\n");
     printf("\033[1;33m--------------------------------------------------------------\033[0m\r\n");
 
     fflush(0);
+}
+
+void close_client()
+{
+    reset_terminal_mode();
+
+    close(sock);
+
+    if (cmdmode) moveCursorUp(PP_LINE_SPACE, 1, 0);
+    else         moveCursorUp(PP_LINE_SPACE + getLFcnt(blist), 1, bp);
+
+    printf("\r\n\033[1;4;33mCLOSED CLIENT.\033[0m");
+    for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n");
 }
 
 int main(int argc, char *argv[])
@@ -834,11 +850,6 @@ int main(int argc, char *argv[])
      * 코드 진행 이후 '입력 문구'의 출력이 필요할 때는 prompt_printed = 0 실행
      */
     int prompt_printed = 0;
-    
-    /* COMMAND MODE
-     * ESC 눌러서 실행
-     */
-    int cmdmode;
 
     int cmdcode;
     char sender[NAME_SIZE];
@@ -1189,6 +1200,12 @@ int main(int argc, char *argv[])
 
                 prompt_printed = 0;
             }
+
+            else if (cmdcode == SERVCLOSED_CMD_CODE)
+            {
+                close_client();
+                return 0;
+            }
         }
 
         // REPRINT PROMPT ONLY ON OUTPUT OCCURENCE
@@ -1232,15 +1249,7 @@ int main(int argc, char *argv[])
                 // 99 & 037
                 case 3:
                 {
-                    reset_terminal_mode();
-
-                    close(sock);
-
-                    if (cmdmode) moveCursorUp(PP_LINE_SPACE, 1, 0);
-                    else         moveCursorUp(PP_LINE_SPACE + getLFcnt(blist), 1, bp);
-
-                    printf("\r\n\033[1;4;33mCLOSED CLIENT.\033[0m");
-                    for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n");
+                    close_client();
 
                     return 0;
                 }

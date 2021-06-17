@@ -63,6 +63,9 @@
 
 int global_curpos = 0;
 
+// COMMAND MODE: ESC 눌러서 실행
+int cmdmode = 0;
+
 time_t inittime;    // 서버가 시작된 시각
 time_t lasttime;    // 마지막 heartbeat 시각
 time_t now;         // 실시간 시각 (메인 반복문에서 매 순간 갱신)
@@ -1028,11 +1031,6 @@ int main(int argc, char **argv)
      */
     int prompt_printed = 0;
 
-    /* COMMAND MODE
-     * ESC 눌러서 실행
-     */
-    int cmdmode = 0;
-
     /* sendAll()의 사용 형식에 맞추기 위한 '서버 이름'.
      * sendAll()에 사용할 때는 char *sender 인자에 넣으면 됨
      */
@@ -1178,6 +1176,8 @@ int main(int argc, char **argv)
                 if (names[i][0] == 0) continue;
 
                 if (!has_client) has_client = 1;
+
+                // ///// 수정하기
                 write(client[i], "1500", CMDCODE_SIZE);
                 printf("\r\n\033[1;34m>> HEARTBEAT\033[0m at [t: %ld] to   %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
             }
@@ -1205,6 +1205,16 @@ int main(int argc, char **argv)
                 // 99 & 037
                 case 3:
                 {
+                    // 서버가 종료되었다고 알림
+                    memset(buf, 0, BUF_SIZE);
+                    sprintf(buf, "%d", SERVCLOSED_CMD_CODE);
+                    for (int i = 0; i < clnt_cnt; i++)
+                    {
+                        if (client[i] < 0 || names[i][0] == 0) continue;
+                        write(client[i], buf, BUF_SIZE);
+                        printf("\033[1;34mSent to client\033[0m %d [%d] (%s)\r\n", i, client[i], names[i]);
+                    }
+
                     reset_terminal_mode();
 
                     close(serv_sock);
