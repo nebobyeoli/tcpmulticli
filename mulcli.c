@@ -64,6 +64,8 @@ int cmdmode;
 
 int MEMBER_SRL = -1;    // -1: 미지정
 
+char NNAME[NAME_SIZE];  // 자기 자신의 닉네임
+
 // 처음에 '0'이 아니라 '-1' 되도록 수정함: client 번호는 0부터 시작하기 때문.
 int CHAT_TARGET = -1;   // 타겟 번호. 개인채팅이면 타겟 member_srl, 단체면 channel
 
@@ -72,10 +74,9 @@ int CHAT_STATUS = 0;    // idle = 0, personal_chat = 1, channel_chat = 2
 int named_client_count = 0;
 
 // 지정된 멀티캐스팅 주소
-char mulcast_addr[] = "239.0.100.1";
+char TEAM_MULCAST_ADDR[] = "239.0.100.1";
 
 int sock;               // 서버 소켓
-char nname[NAME_SIZE];  // 자기 자신의 닉네임
 
 // prompt-print message, 즉 '입력 문구'
 char pp_message[] = "Input message(CTRL+C to quit CHAT):\r\n";
@@ -134,7 +135,7 @@ void send_msg(int cmdcode, char *msg)
     memset(message, 0, BUF_SIZE);
 
     sprintf(message, "%d", cmdcode);
-    sprintf(&message[CMDCODE_SIZE], "%s", nname);
+    sprintf(&message[CMDCODE_SIZE], "%s", NNAME);
     sprintf(&message[CMDCODE_SIZE + NAME_SIZE], "%s", msg);
 
     write(sock, message, BUF_SIZE);
@@ -785,7 +786,9 @@ void firstScene()
 
     printf("\033[1;33m--------------------------------------------------------------\033[0m\r\n");
     printf("\033[1;33m==================== Welcome To The CHAT! ====================\033[0m\r\n");
-    printf("\r\n\n\n");
+    printf("\r\n\n");
+
+    printf("\033[1;33mNICKNAME:\033[37m %s\033[0m\r\n\n", NNAME);
 
     printf("\033[1;33m[Private chatting]\033[0m\r\n\n");
     printf("- \033[1m개인채팅 사용방법:\033[0m 닉네임 앞 숫자 입력");
@@ -815,15 +818,17 @@ void close_client()
 
 int main(int argc, char *argv[])
 {
-    if (argc != 3)
+    if (argc != 2)
     {
-        printf("Usage : %s <IP> <PORT>\n", argv[0]);
+        printf("Usage: %s <PORT>\n", argv[0]);
         exit(1);
     }
     
-    int namelen;                    // 자기 자신의 닉네임 길이 (닉네임 설정 때 사용)
-    struct ip_mreq join_addr;       // 멀티캐스트 주소 저장
-    struct sockaddr_in serv_addr;   // 서버 주소 저장
+    int namelen;                // 자기 자신의 닉네임 길이 (닉네임 설정 때 사용)
+
+    int state = 0;              // 초기 연결 때의 오류 여부, 그 이후에는 클라이언트 상태 저장 용도로써 사용
+    struct ip_mreq join_addr;   // 멀티캐스트 주소 저장
+    struct sockaddr_in mul_addr, serv_addr;
     
     struct  timeval tr;     // timeval_receive
     fd_set  readfds;        // CONTROLS SELECT [once set: read-only]
@@ -854,27 +859,85 @@ int main(int argc, char *argv[])
     int cmdcode;
     char sender[NAME_SIZE];
 
-    sock = socket(PF_INET, SOCK_STREAM, 0);   
-    if (sock == -1) perror_exit("socket() error!\n");
-    
-    memset(&serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_addr.s_addr = inet_addr(argv[1]);
-    serv_addr.sin_port = htons(atoi(argv[2]));
-
     tr.tv_sec  = RECV_TIMEOUT_SEC;
     tr.tv_usec = RECV_TIMEOUT_USEC;
     
     // JOIN MULTICAST GROUP
     // 주어진 멀티캐스팅 주소로 연결한다.
-    join_addr.imr_multiaddr.s_addr = inet_addr(mulcast_addr);
-    join_addr.imr_interface.s_addr = htonl(INADDR_ANY);
-    setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void*)&join_addr, sizeof(join_addr));
-
-    if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) == -1)
-        perror_exit("connect() error!\n");
+    int udp_sock;
+    int str_len;
     
-    printf("\033[1;4;33m\nCONNECTED TO SERVER.\033[0m\n");
+    //// UDP 소켓, 연결 설정
+
+    udp_sock = socket(PF_INET, SOCK_DGRAM, 0);
+    if (udp_sock == -1) perror_exit("UDP socket() error!\n");
+
+    memset(&mul_addr, 0, sizeof(mul_addr));
+    mul_addr.sin_family = AF_INET;
+    mul_addr.sin_addr.s_addr = htonl(INADDR_ANY);
+    mul_addr.sin_port = htons(9000);
+
+    join_addr.imr_multiaddr.s_addr = inet_addr(TEAM_MULCAST_ADDR);
+    join_addr.imr_interface.s_addr = htonl(INADDR_ANY);
+    setsockopt(udp_sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void*)&join_addr, sizeof(join_addr));
+
+    state = bind(udp_sock, (struct sockaddr *)&mul_addr, sizeof(mul_addr));
+    if (state == -1) perror_exit("UDP bind() error");
+
+    printf("\n\033[1;4;33mCONNECTED TO \033[36mUDP\033[33m MULTICAST.\033[0m\n\n");
+
+    // 모든 입력 무시
+    set_conio_terminal_mode();
+
+    memset(&buf, 0, sizeof(buf));
+    int _serv_port = 0;
+    char _serv_ip[20] = {0,};
+
+    printf("\033[1;33mWAITING FOR MULTICAST MESSAGE \033[37m[1 SEC]\033[33m ...\033[0m\r\n\n");
+
+    // 멀티캐스트에서 IP, 포트번호 받아오기
+    // 서버는 1초에 한 번씩 서버IP, 포트 정보 전송함
+    str_len = recvfrom(udp_sock, buf, BUF_SIZE, 0, 0, 0);
+    if (str_len < 0)
+    {
+        printf("\033[1mFAILED TO RECEIVE MESSAGE!\033[0m\r\n");
+        exit(1);
+    }
+
+    if (kbhit()) getch();
+
+    int t_offset = 0;
+
+    char temp[20] = {0,};
+
+    memcpy(&temp, &buf, sizeof(int));
+    t_offset = sizeof(int);
+    _serv_port = atoi(temp);
+    memcpy(&_serv_ip, &buf[t_offset], sizeof(_serv_ip));
+
+    moveCursorUp(2, 1, 0);
+    printf("\033[1;35m<< RECEIVED    INFO MESSAGE.\033[0m\r\n");
+    printf("\033[1;35m<<\033[37m SERVER IP : %s\033[0m\r\n", _serv_ip);
+    printf("\033[1;35m<<\033[37m PORT      : %d\033[0m\r\n", _serv_port);
+    fflush(0);
+
+    // 입력 모드 재개
+    reset_terminal_mode();
+
+    //// TCP 소켓, 연결 설정
+
+    sock = socket(PF_INET, SOCK_STREAM, 0);   
+    if (sock == -1) perror_exit("TCP socket() error!\n");
+
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = inet_addr(_serv_ip);
+    serv_addr.sin_port = htons(_serv_port);
+
+    state = connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr));
+    if (state == -1) perror_exit("TCP connect() error!\n");
+    
+    printf("\n\033[1;4;33mCONNECTED TO \033[36mTCP\033[33m SERVER.\033[0m\n");
     printf("\n\n");
     fflush(0);
 
@@ -936,7 +999,7 @@ int main(int argc, char *argv[])
             else
             {
                 printf("Name accepted.\n");
-                memcpy(nname, buf, NAME_SIZE);
+                memcpy(NNAME, buf, NAME_SIZE);
 
                 MEMBER_SRL = atoi(&message[1]);
                 printf("\n\033[1;33mMEMBER_SRL: \033[37m%d\033[0m\n", MEMBER_SRL);
