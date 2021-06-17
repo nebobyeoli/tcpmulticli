@@ -1616,6 +1616,7 @@ int main(int argc, char **argv)
                         sprintf(message, "\033[33m%s left the chat.", names[i]);
 
                         sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, message, message);
+                        client_data[i].logon_status = 0; // 로그오프 처리
 
                         memset(names[i], 0, NAME_SIZE);
                         memset(client_data[i].nick, 0, NAME_SIZE);
