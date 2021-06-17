@@ -25,6 +25,8 @@
 
 //// 마지막에 아래 정리해서 아래 변수들 함수들 헤더랑 따로 만들어서 담을 것
 
+#define TTL  2
+
 #define BUF_SIZE            1024 * 10   // 임시 크기(1024 * n): 수신 시작과 끝에 대한 cmdcode 추가 사용 >> MMS 수신 구현 전까지
 #define MSG_SIZE            1000 * 10
 #define CMDCODE_SIZE        4           // cmdcode의 크기
@@ -38,6 +40,8 @@
 
 #define GETSERVMSG_TIMEOUT_SEC  0
 #define GETSERVMSG_TIMEOUT_USEC 10000   // 1000000 usec = 1 sec
+
+#define UDP_INTERVAL            1       // UDP에 [서버 INFO] 제공할 시간 간격
 #define HEARTBEAT_INTERVAL      3       // HEARTBEAT 간격 (초 단위)
 
 #define MIN_ERASE_LINES         1       // 각 출력 사이의 줄 간격 - 앞서 출력된 '입력 문구'를 포함하여, 다음 메시지 출력 전에 지울 줄 수
@@ -67,11 +71,15 @@ int global_curpos = 0;
 int cmdmode = 0;
 
 time_t inittime;    // 서버가 시작된 시각
+
+time_t udp_lasttime;    // 마지막 heartbeat 시각
+time_t udp_now;         // 실시간 시각 (메인 반복문에서 매 순간 갱신)
+
 time_t lasttime;    // 마지막 heartbeat 시각
 time_t now;         // 실시간 시각 (메인 반복문에서 매 순간 갱신)
 
 // 지정된 멀티캐스팅 주소
-char mulcast_addr[] = "239.0.100.1";
+char TEAM_MULCAST_ADDR[] = "239.0.100.1";
 
 int client[MAX_SOCKS];              // 클라이언트 연결 저장 배열
 char names[MAX_SOCKS][NAME_SIZE];   // 닉네임 저장 배열
@@ -169,7 +177,7 @@ void sendAll(int clnt_cnt, int cmdcode, char *sender, char *msg, char *servlog)
     // APPEND MESSAGE
     sprintf(&message[CMDCODE_SIZE + NAME_SIZE], "%s", msg);
     
-    if (servlog) printf("\r\n\033[1mMESSAGE FROM SERVER: %s\033[0m\r\n", servlog);
+    if (servlog) printf("\r\n\033[1;34m>> \033[36m[TCP] \033[37mMESSAGE FROM SERVER: %s\033[0m\r\n", servlog);
     printf("Length of buf: %d\r\n", (int)strlen(msg));
     printf("Total msgsize: %d of %d maximum\r\n", CMDCODE_SIZE + NAME_SIZE + (int)strlen(msg), BUF_SIZE);
 
@@ -982,8 +990,12 @@ void memberlist_serialize_sendAll(int clnt_cnt)
 
 int main(int argc, char **argv)
 {
-    if (argc != 2) {
-        printf("Usage: %s <PORT>\n", argv[0]);
+    if (argc != 3)
+    {
+        printf("Usage: %s <IP OF PC> <PORT>\n", argv[0]);
+        printf("IP OF PC: "); fflush(0);
+        system("hostname -I");
+        printf("\n"); fflush(0);
         exit(1);
     }
 
@@ -998,9 +1010,12 @@ int main(int argc, char **argv)
     static struct dirent *dir;
 
     int serv_sock, clnt_sock;
+    int udp_sock;
+    int time_live = TTL;
+
     int state = 0;              // 초기 연결 때의 오류 여부, 그 이후에는 클라이언트 상태 저장 용도로써 사용
     struct ip_mreq join_addr;   // 멀티캐스트 주소 저장
-    struct sockaddr_in clnt_addr, serv_addr;
+    struct sockaddr_in clnt_addr, serv_addr, mul_addr;
 
     struct timeval ti;          // timeval_(std)input - 입력값에 대한 타임아웃 구조체
     fd_set readfds, allfds;     // 클라이언트 배열 순회 용도, 둘의 정확한 차이나 용도는 불명
@@ -1041,31 +1056,39 @@ int main(int argc, char **argv)
 
     srand(time(0)); // 랜덤시트 
 
+	udp_sock = socket(PF_INET, SOCK_DGRAM, 0);
+    if (udp_sock == -1) perror_exit("UDP socket() error!\n");
+
     serv_sock = socket(AF_INET, SOCK_STREAM, 0);
-    if (serv_sock == -1) perror_exit("socket() error!\n");
+    if (serv_sock == -1) perror_exit("TCP socket() error!\n");
+
+    memset(&mul_addr, 0, sizeof(mul_addr));
+    mul_addr.sin_family = AF_INET;
+    mul_addr.sin_addr.s_addr = inet_addr(TEAM_MULCAST_ADDR);
+    mul_addr.sin_port = htons(atoi(argv[2]));
+
+    // UDP TTL
+	setsockopt(udp_sock, IPPROTO_IP, IP_MULTICAST_TTL, (void*)&(time_live), sizeof(time_live));
+
+    printf("\n\033[1;4;33mCONNECTED TO \033[36mUDP\033[33m MULTICAST.\033[0m\n");
 
     memset(&serv_addr, 0x00, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     serv_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    serv_addr.sin_port = htons(atoi(argv[1]));
+    serv_addr.sin_port = htons(atoi(argv[2]));
     
-    // JOIN MULTICAST GROUP
-    // 239.0.100.1로 조인한다.
-    join_addr.imr_multiaddr.s_addr = inet_addr(mulcast_addr);
-    join_addr.imr_interface.s_addr = htonl(INADDR_ANY);
-
+    // TCP
     // 커널이 소켓의 포트를 점유 중인 상태에서도 서버 프로그램을 다시 구동할 수 있도록 한다
     // 즉 서버를 닫고 다시 열었을 때, 사용했던 포트를 재사용할 수 있도록 한다.
     setsockopt(serv_sock, SOL_SOCKET, SO_REUSEADDR, (const char *)&on, sizeof(on));
 
-    // 멀티캐스트 (char* join_addr) 주소에 가입
-    setsockopt(serv_sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void*)&join_addr, sizeof(join_addr));
-
+    // TCP BIND
     state = bind(serv_sock, (struct sockaddr *)&serv_addr, sizeof(serv_addr));
-    if (state == -1) perror_exit("bind() error!\n");
+    if (state == -1) perror_exit("TCP bind() error!\n");
 
+    // TCP LISTEN
     state = listen(serv_sock, 5);
-    if (state == -1) perror_exit("listen() error!\n");
+    if (state == -1) perror_exit("TCP listen() error!\n");
 
     clnt_sock = serv_sock;
 
@@ -1081,9 +1104,10 @@ int main(int argc, char **argv)
     for (int i = 0; i < MAX_SOCKS; i++) client[i] = -1;
 
     FD_ZERO(&readfds);
+    // FD_SET(udp_sock, &readfds);
     FD_SET(serv_sock, &readfds);
 
-    printf("\n\033[1;4;33mSTARTED TCP SERVER.\033[0m\n");
+    printf("\n\033[1;4;33mSTARTED \033[36mTCP\033[33m SERVER.\033[0m\n");
 
     // GET EMOJI NAMES.
     if (dirp)
@@ -1127,7 +1151,9 @@ int main(int argc, char **argv)
     memset(message, 0, BUF_SIZE);
     memset(cmd, 0, CMD_SIZE);
 
-    inittime = lasttime = now = time(0);
+    inittime = time(0);
+    lasttime = now = inittime;
+    udp_lasttime = udp_now = inittime;
 
     ////// CLIENT INTERACTION LOOP. //////
 
@@ -1149,36 +1175,75 @@ int main(int argc, char **argv)
             fflush(stdout);
         }
 
-        // SEND HEARTBEAT REQUEST
-        if ((now = time(0)) - lasttime >= HEARTBEAT_INTERVAL)
+        // SEND SERVER INFO TO [UDP SOCK]
+        // 서버는 1초에 한 번씩 서버IP, 포트 정보 전송함
+        if ((udp_now = time(0)) - udp_lasttime >= UDP_INTERVAL)
         {
-            lasttime = now;
+            udp_lasttime = udp_now;
 
             if (cmdmode)
             {
                 global_curpos = getCurposFromListptr(clist, cp);
-                moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
+                moveCursorUp(PP_LINE_SPACE, 1, 0);
             }
 
             else
             {
                 global_curpos = getCurposFromListptr(blist, bp);
-                moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + getLFcnt(blist), 1, bp);
+                moveCursorUp(PP_LINE_SPACE + getLFcnt(blist), 1, bp);
             }
+
+            // sleep(1);
+
+            char info[30] = {0,};
+            memcpy(info, argv[2], sizeof(int));  // port
+            memcpy(&info[sizeof(int)], argv[1], 20);  // pc ip
+
+		    sendto(udp_sock, info, strlen(info), 0, (struct sockaddr*)&mul_addr, sizeof(mul_addr));
+
+            printf("\033[1;34m>> \033[36m[UDP]\033[34m SENT SERVER INFO\033[37m [%s]\033[0m at [t: %ld]\r\n", info, (now = time(0)) - inittime);
+            // sleep(1);
+            fflush(0);
+            prompt_printed = 0;
+        }
+
+        // SEND HEARTBEAT REQUEST
+        if ((now = time(0)) - lasttime >= HEARTBEAT_INTERVAL)
+        {
+            lasttime = now;
 
             //// sendAll에서와 좀 별도인 작동이 있어서 별도 반복문 수행
 
             int has_client = 0;
+
+            // HEARTBEAT REQUEST MESSAGE
+            char req[CMDCODE_SIZE + 1] = {0,};
+            sprintf(req, "%d", HEARTBEAT_CMD_CODE);
 
             for (i = 0; i < clnt_cnt; i++)
             {
                 // DISCONNECT CLIENT에서 연결 해제되면 알아서 그만 보냄
                 if (names[i][0] == 0) continue;
 
-                if (!has_client) has_client = 1;
+                if (!has_client)
+                {
+                    has_client = 1;
 
-                // ///// 수정하기
-                write(client[i], "1500", CMDCODE_SIZE);
+                    if (cmdmode)
+                    {
+                        global_curpos = getCurposFromListptr(clist, cp);
+                        moveCursorUp(PP_LINE_SPACE, 1, 0);
+                    }
+
+                    else
+                    {
+                        global_curpos = getCurposFromListptr(blist, bp);
+                        moveCursorUp(PP_LINE_SPACE + getLFcnt(blist), 1, bp);
+                    }
+                }
+
+                write(client[i], req, CMDCODE_SIZE);
+
                 printf("\r\n\033[1;34m>> HEARTBEAT\033[0m at [t: %ld] to   %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
             }
 
@@ -1555,24 +1620,31 @@ int main(int argc, char **argv)
             if (cmdmode) moveCursorUp(MIN_ERASE_LINES, 1, 0);
             else         moveCursorUp(MIN_ERASE_LINES + getLFcnt(blist), 1, bp);
 
-            printf("Connection from (%s, %d)\r\n", inet_ntoa(clnt_addr.sin_addr), ntohs(clnt_addr.sin_port));
+            printf("\r\n\033[1;33m================================================\033[0m\r\n");
+            printf("\033[1;33m<<\033[36m [TCP]\033[33m Connection from \033[37m(%s, %d)\033[0m\r\n", inet_ntoa(clnt_addr.sin_addr), ntohs(clnt_addr.sin_port));
+            
             prompt_printed = 0;
 
+            printf("\033[1m");
             for (i = 0; i < MAX_SOCKS; i++)
             {
                 if (client[i] < 0)
                 {
                     client[i] = clnt_sock;
-                    printf("Client index: %d\r\n", i);
-                    printf("Client FD: %d\r\n", clnt_sock);
+                    printf("Client index : %d\r\n", i);
+                    printf("Client FD    : %d\r\n", clnt_sock);
                     break;
                 }
             }
+            printf("\033[0m");
 
-            printf("Accepted [%d]\r\n", clnt_sock);
-            printf("===================================\r\n");
+            printf("\033[1;33mAccepted \033[37m[%d]\033[0m\r\n", clnt_sock);
+            printf("\033[1;33m================================================\033[0m\r\n");
+            printf("\r\n");
 
-            if (i == MAX_SOCKS) perror("Too many clients!\r\n");
+            if (i == MAX_SOCKS) perror("\033[1m[Too many clients!]\033[0m\r\n");
+
+            fflush(0);
 
             FD_SET(clnt_sock, &readfds);
             memset(names[i], 0, NAME_SIZE);
@@ -1599,8 +1671,10 @@ int main(int argc, char **argv)
                     if (cmdmode) moveCursorUp(MIN_ERASE_LINES, 1, 0);
                     else         moveCursorUp(MIN_ERASE_LINES + getLFcnt(blist), 1, bp);
 
-                    printf("Disconnected client %d [%d] (%s)\r\n", i, client[i], names[i]);
-                    printf("===================================\r\n");
+                    printf("\033[1;33m================================================\033[0m\r\n");
+                    printf("\033[1;33m-- \033[36m[TCP] \033[33mDisconnected client \033[37m%d [%d] (%s)\033[0m\r\n", i, client[i], names[i]);
+                    printf("\033[1;33m================================================\033[0m\r\n");
+                    printf("\r\n");
                     fflush(0);
 
                     close(client[i]);
@@ -1805,11 +1879,7 @@ int main(int argc, char **argv)
                         if (cmdcode == OPENCHAT_CMD_CODE)
                         {
                             // SEND RECEIVED MESSAGE TO ALL CLIENTS
-                            if (mdest[0]) {
-                                // printf("[[GOT DICE]]");
-                                // sleep(2);
-                                sendAll(clnt_cnt, OPENCHAT_CMD_CODE, names[i], mdest, mdest);
-                            }
+                            if (mdest[0]) sendAll(clnt_cnt, OPENCHAT_CMD_CODE, names[i], mdest, mdest);
                             else          sendAll(clnt_cnt, OPENCHAT_CMD_CODE, names[i], msg, NULL);
                         }
 
