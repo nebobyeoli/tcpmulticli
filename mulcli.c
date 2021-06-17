@@ -815,11 +815,11 @@ void close_client()
 
 int main(int argc, char *argv[])
 {
-    if (argc != 3)
-    {
-        printf("Usage : %s <IP> <PORT>\n", argv[0]);
-        exit(1);
-    }
+    // if (argc != 3)
+    // {
+    //     printf("Usage : %s <IP> <PORT>\n", argv[0]);
+    //     exit(1);
+    // }
     
     int namelen;                    // 자기 자신의 닉네임 길이 (닉네임 설정 때 사용)
     struct ip_mreq join_addr;       // 멀티캐스트 주소 저장
@@ -856,20 +856,53 @@ int main(int argc, char *argv[])
 
     sock = socket(PF_INET, SOCK_STREAM, 0);   
     if (sock == -1) perror_exit("socket() error!\n");
-    
-    memset(&serv_addr, 0, sizeof(serv_addr));
-    serv_addr.sin_family = AF_INET;
-    serv_addr.sin_addr.s_addr = inet_addr(argv[1]);
-    serv_addr.sin_port = htons(atoi(argv[2]));
 
     tr.tv_sec  = RECV_TIMEOUT_SEC;
     tr.tv_usec = RECV_TIMEOUT_USEC;
     
     // JOIN MULTICAST GROUP
     // 주어진 멀티캐스팅 주소로 연결한다.
+    int recv_sock;
+    int str_len;
+    
+    recv_sock=socket(PF_INET, SOCK_DGRAM, 0);
+
     join_addr.imr_multiaddr.s_addr = inet_addr(mulcast_addr);
     join_addr.imr_interface.s_addr = htonl(INADDR_ANY);
-    setsockopt(sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void*)&join_addr, sizeof(join_addr));
+    setsockopt(recv_sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void*)&join_addr, sizeof(join_addr));
+
+    memset(&buf, 0, sizeof(buf));
+    int _serv_port = 0;
+    char _serv_ip[20] = {0,};
+
+    printf("서버 값 받기 준비중\r\n");
+
+    // 멀티캐스트에서 IP, 포트번호 받아오기
+    while(1)
+    {
+        str_len=recvfrom(recv_sock, buf, BUF_SIZE, 0, NULL, 0);
+        if(str_len<0)
+        {
+            printf("받아오기 실패\r\n");
+            exit(1);
+        }
+
+        int t_offset = 0;
+
+        char temp[20] = {0,};
+
+        memcpy(&temp, &buf, sizeof(int));
+        t_offset = sizeof(int);
+        _serv_port = atoi(temp);
+        memcpy(&_serv_ip, &buf[t_offset], sizeof(_serv_ip));
+
+        printf("서버 정보 받기 성공 [%s:%d]\r\n", _serv_ip, _serv_port);
+    }
+
+    memset(&serv_addr, 0, sizeof(serv_addr));
+    serv_addr.sin_family = AF_INET;
+    serv_addr.sin_addr.s_addr = inet_addr(_serv_ip);
+    serv_addr.sin_port = htons(_serv_port);
 
     if (connect(sock, (struct sockaddr*)&serv_addr, sizeof(serv_addr)) == -1)
         perror_exit("connect() error!\n");
