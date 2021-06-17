@@ -1113,7 +1113,7 @@ int main(int argc, char *argv[])
 
                     else
                     {
-                        printf("\033[1;33m%d (%s)\033[37m is not an existing client.\033[0m\r\n> ", req_to, client_data[req_to].nick);
+                        printf("\033[1;33m%d\033[37m is not an existing client.\033[0m\r\n> ", req_to);
                         fflush(0);
                     }
                 }
