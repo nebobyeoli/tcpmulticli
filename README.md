@@ -83,7 +83,32 @@ sprintf(&message[CMDCODE_SIZE + NAME_SIZE + 2], "%s", msg);
 
 ### HEARTBEAT
 
-서버는 닉네임이 설정된 클라이언트에 대해 `HEARTBEAT_INTERVAL` 초 간격으로 클라이언트에 `HEARTBEAT`를 요청하고, 이에 응해 클라이언트가 전송한 `HEARTBEAT`를 출력한다. 이때 `HEARTBEAT`는 ~, ~, 를 포함하며 ~의 정보를 제공한다 등등 `영상이 내용 추가 바람(?)`
+서버는 닉네임이 설정된 클라이언트에 대해 일정 시간마다 클라이언트에 `HEARTBEAT`를 요청하고, 이에 응해 클라이언트가 전송한 `HEARTBEAT`를 출력한다. 이때 `HEARTBEAT`는 로그인 여부, 채팅중 여부, 누구랑 채팅중인지 등을 전송한다.
+
+### 클라이언트 통신
+
+클라이언트 초기 접속시 다음과 같은 메인화면이 실행.
+```c
+--------------------------------------------------------------
+==================== Welcome To The CHAT! ====================
+
+
+
+[Private chatting]
+
+- 개인채팅 사용방법: 닉네임 앞 숫자 입력
+
+
+==============================================================
+--------------------------------------------------------------
+
+1 AAA(채팅중)
+2 BBB
+```
+
+### 사용 방법
+
+-닉네임 앞 번호를 입력시 해당 유저와 채팅.
 
 
 ## Server log info
@@ -109,12 +134,12 @@ Received from A [B] (C)
 
 Cmd code | Constant                | Meaning
 -------- | ----------------------- | ---------------------
-**1000** | `SERVMSG_CMD_CODE`      | **Message from server**
+**1000** | `SERVMSG_CMD_CODE`      | **Message from server `서버 메시지`**
 **1500** | `HEARTBEAT_CMD_CODE`    | **HEARTBEAT 송수신**
-**1501** | `HEARTBEAT_REQ_CODE`    | **Memberlist request**
+**1501** | `HEARTBEAT_REQ_CODE`    | **Memberlist request`클라이언트 리스트 요청`**
   1601   | `SINGLECHAT_REQ_CODE`   | 개인 채팅 요청
   1602   | `SINGLECHAT_RESP_CODE`  | 개인 채팅 요청 응답
-  2000   | `SETNAME_CMD_CODE`      | Set client nickname
+  2000   | `SETNAME_CMD_CODE`      | Set client nickname `클라이언트 닉네임 설정`
   3000   | `OPENCHAT_CMD_CODE`     | Messaging - Open chat `오픈채팅`
 **3001** | `SINGLECHAT_CMD_CODE`   | **Messaging - Single chat `개인채팅`**
 
@@ -192,14 +217,33 @@ Input message(CTRL+C to quit):
 
 출력 예시
 ```sh
-꽤 높은 숫자입니다.
-나온 숫자 : 68
+예 저희가 주사위 많이 하죠.
+나온 숫자 : 58
 
 만족스럽네요.
 나온 숫자 : 76
 
 주사위는 잘못이 없습니다...
 나온 숫자 : 14
+```
+
+## 제비뽑기
+
+메시지 모드에서 `/pickme`를 보내면 랜덤으로 한 명의 닉네임이 출력된다. 
+
+### 사용 예
+
+
+입력 예시
+```sh
+Input message(CTRL+C to quit):
+/pickme
+```
+
+출력 예시
+```sh
+나만 아니면 돼!!!!!!
+이번 당번은.....    : (랜덤 닉네임)
 ```
 
 ## Notes to self.
