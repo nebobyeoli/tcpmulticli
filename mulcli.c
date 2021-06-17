@@ -64,6 +64,8 @@ int cmdmode;
 
 int MEMBER_SRL = -1;    // -1: 미지정
 
+char NNAME[NAME_SIZE];  // 자기 자신의 닉네임
+
 // 처음에 '0'이 아니라 '-1' 되도록 수정함: client 번호는 0부터 시작하기 때문.
 int CHAT_TARGET = -1;   // 타겟 번호. 개인채팅이면 타겟 member_srl, 단체면 channel
 
@@ -75,7 +77,6 @@ int named_client_count = 0;
 char TEAM_MULCAST_ADDR[] = "239.0.100.1";
 
 int sock;               // 서버 소켓
-char nname[NAME_SIZE];  // 자기 자신의 닉네임
 
 // prompt-print message, 즉 '입력 문구'
 char pp_message[] = "Input message(CTRL+C to quit CHAT):\r\n";
@@ -134,7 +135,7 @@ void send_msg(int cmdcode, char *msg)
     memset(message, 0, BUF_SIZE);
 
     sprintf(message, "%d", cmdcode);
-    sprintf(&message[CMDCODE_SIZE], "%s", nname);
+    sprintf(&message[CMDCODE_SIZE], "%s", NNAME);
     sprintf(&message[CMDCODE_SIZE + NAME_SIZE], "%s", msg);
 
     write(sock, message, BUF_SIZE);
@@ -787,6 +788,8 @@ void firstScene()
     printf("\033[1;33m==================== Welcome To The CHAT! ====================\033[0m\r\n");
     printf("\r\n\n");
 
+    printf("\033[1;33mNICKNAME:\033[37m %s\033[0m\r\n\n", NNAME);
+
     printf("\033[1;33m[Private chatting]\033[0m\r\n\n");
     printf("- \033[1m개인채팅 사용방법:\033[0m 닉네임 앞 숫자 입력");
 
@@ -996,7 +999,7 @@ int main(int argc, char *argv[])
             else
             {
                 printf("Name accepted.\n");
-                memcpy(nname, buf, NAME_SIZE);
+                memcpy(NNAME, buf, NAME_SIZE);
 
                 MEMBER_SRL = atoi(&message[1]);
                 printf("\n\033[1;33mMEMBER_SRL: \033[37m%d\033[0m\n", MEMBER_SRL);
