@@ -133,11 +133,11 @@ struct sClient
 
 struct HeartBeatPacket
 {
-    int cmd_code;
-    int member_srl;
-    int chat_status;
-    int target;
-    int is_chatting;
+    int cmd_code;       // HEARTBEAT 전송 CMDCODE
+    int member_srl;     // 클라이언트 고유번호
+    int chat_status;    // 채팅 상대가 있는지 (idle = 0, personal_chat = 1, channel_chat = 2)
+    int target;         // 채팅 상대
+    int is_chatting;    // 타이핑 중인지
 };
 
 // 함수명 변경: error_handling() >> perror_exit()

@@ -96,7 +96,7 @@ struct sClient
 {
     int logon_status;           // logon 되어있으면 1, 아니면 0
     char nick[NAME_SIZE];
-    int CHAT_STATUS;            // idle = 0, personal_chat = 1, channel_chat = 2
+    int chat_status;            // idle = 0, personal_chat = 1, channel_chat = 2
     int target;                 // 타겟 번호. 개인채팅이면 타겟 member_srl, 단체면 channel
     int is_chatting;            // 채팅 중인지
     time_t last_heartbeat_time; // 마지막 heartbeat을 받은 시간
@@ -105,11 +105,11 @@ struct sClient
 
 struct HeartBeatPacket
 {
-    int cmd_code;
-    int member_srl;
-    int CHAT_STATUS;
-    int target;
-    int is_chatting;
+    int cmd_code;       // HEARTBEAT 전송 CMDCODE
+    int member_srl;     // 클라이언트 고유번호
+    int chat_status;    // 채팅 상대가 있는지 (idle = 0, personal_chat = 1, channel_chat = 2)
+    int target;         // 채팅 상대
+    int is_chatting;    // 타이핑 중인지
 };
 
 // 함수명 변경: error_handling() >> perror_exit()
@@ -704,7 +704,7 @@ void heartbeatSerialize(char *message, struct HeartBeatPacket *hbp)
     memcpy(&result[offset], &tmp, sizeof(int));
     offset += sizeof(int);
 
-    itoa(hbp->CHAT_STATUS, tmp);
+    itoa(hbp->chat_status, tmp);
     memcpy(&result[offset], &tmp, sizeof(int));
     offset += sizeof(int);
 
@@ -744,7 +744,7 @@ void clientListProcess(char* message)
 
             memcpy(&tmp, &message[offset], sizeof(int));
             offset += sizeof(int);
-            client_data[member_srl].CHAT_STATUS = atoi(tmp);
+            client_data[member_srl].chat_status = atoi(tmp);
 
             memcpy(&tmp, &message[offset], sizeof(int));
             offset += sizeof(int);
@@ -1131,7 +1131,7 @@ int main(int argc, char *argv[])
                     struct HeartBeatPacket hbp;
                     hbp.cmd_code = HEARTBEAT_CMD_CODE;
                     hbp.member_srl = MEMBER_SRL;
-                    hbp.CHAT_STATUS = CHAT_STATUS;
+                    hbp.chat_status = CHAT_STATUS;
                     hbp.target = CHAT_TARGET;
                     hbp.is_chatting = isKeyboardWriting();
 
@@ -1633,7 +1633,7 @@ int main(int argc, char *argv[])
                                     break; // continue;
                                 }
 
-                                if (client_data[req_to].CHAT_STATUS > 0)
+                                if (client_data[req_to].chat_status > 0)
                                 {
                                     moveCursorUp(2, 0, 0);
                                     printf("\033[1;33m해당 유저는 채팅중입니다\033[0m\r\n> ");
