@@ -1325,9 +1325,6 @@ int main(int argc, char *argv[])
         FD_ZERO(&readfds);
         FD_SET(0, &readfds);  // fd 0 = stdin
 
-        // SEND MESSAGE
-        // ON STDIN STREAM DATA EXISTENCE
-        
         // kbhit() 내에서 select() 돌아감, 추가적 select() 필요 없음
         // 그래서 timeval ts 지움
         if (kbhit())
