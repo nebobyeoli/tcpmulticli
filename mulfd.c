@@ -1057,7 +1057,7 @@ int main(int argc, char **argv)
 
     srand(time(0)); // 랜덤시트 
 
-	udp_sock = socket(PF_INET, SOCK_DGRAM, 0);
+    udp_sock = socket(PF_INET, SOCK_DGRAM, 0);
     if (udp_sock == -1) perror_exit("UDP socket() error!\n");
 
     serv_sock = socket(AF_INET, SOCK_STREAM, 0);
@@ -1069,7 +1069,7 @@ int main(int argc, char **argv)
     mul_addr.sin_port = htons(atoi(argv[2]));
 
     // UDP TTL
-	setsockopt(udp_sock, IPPROTO_IP, IP_MULTICAST_TTL, (void*)&(time_live), sizeof(time_live));
+    setsockopt(udp_sock, IPPROTO_IP, IP_MULTICAST_TTL, (void*)&(time_live), sizeof(time_live));
 
     printf("\n\033[1;4;33mCONNECTED TO \033[36mUDP\033[33m MULTICAST.\033[0m\n");
 
@@ -1200,7 +1200,7 @@ int main(int argc, char **argv)
             memcpy(info, argv[2], sizeof(int));  // port
             memcpy(&info[sizeof(int)], argv[1], 20);  // pc ip
 
-		    sendto(udp_sock, info, strlen(info), 0, (struct sockaddr*)&mul_addr, sizeof(mul_addr));
+            sendto(udp_sock, info, strlen(info), 0, (struct sockaddr*)&mul_addr, sizeof(mul_addr));
 
             printf("\033[1;34m>> \033[36m[UDP]\033[34m SENT SERVER INFO\033[37m [%s]\033[0m at [t: %ld]\r\n", info, (now = time(0)) - inittime);
             // sleep(1);
