@@ -116,8 +116,7 @@ int emojiCnt = 0;
 struct
 {
     char title[EMOJI_TITLELEN_MAX];     // 이모티콘 파일명 저장
-    unsigned int len;                   // long int ftell(FILE* stream)
-
+    long int len;                       // from long int ftell(FILE* stream)
 } emojis[EMOJI_VARIANT_MAX];
 
 struct sClient
@@ -1087,10 +1086,12 @@ int main(int argc, char **argv)
 
     ////// INITIALIZE //////
 
+    memset(client, -1, sizeof(int) * MAX_SOCKS);
+
     // client_data 초기화
     for (int i = 0; i < MAX_SOCKS; i++)
     {
-        memset(client_data[i].nick, 0, sizeof(client_data[i].nick));
+        memset(client_data[i].nick, 0, NAME_SIZE);
         client_data[i].target = -1;
     }
 
@@ -1217,8 +1218,8 @@ int main(int argc, char **argv)
             int has_client = 0;
 
             // HEARTBEAT REQUEST MESSAGE
-            char req[CMDCODE_SIZE + 1] = {0,};
-            sprintf(req, "%d", HEARTBEAT_CMD_CODE);
+            memset(buf, 0, BUF_SIZE);
+            sprintf(buf, "%d", HEARTBEAT_CMD_CODE);
 
             for (i = 0; i < clnt_cnt; i++)
             {
@@ -1242,7 +1243,7 @@ int main(int argc, char **argv)
                     }
                 }
 
-                write(client[i], req, CMDCODE_SIZE);
+                write(client[i], buf, BUF_SIZE);
 
                 printf("\r\n\033[1;34m>> HEARTBEAT\033[0m at [t: %ld] to   %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
             }
@@ -1917,6 +1918,8 @@ int main(int argc, char **argv)
                         default:
                         {
                             printf("\033[1;31mUndefined\033[37m cmdcode from %d [%d]: %d\033[0m\r\n", i, client[i], cmdcode);
+                            printf("%s\r\n", &buf[4]);
+                            sleep(3);
 
                             break;
                         }
