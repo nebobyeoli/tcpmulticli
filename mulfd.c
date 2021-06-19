@@ -72,8 +72,6 @@
 
 int global_curpos = 0;
 
-int clnt_cnt = 0;
-
 // COMMAND MODE: ESC 눌러서 실행
 int cmdmode = 0;
 
@@ -926,7 +924,7 @@ void HeartBeatProcess(char *message)
 }
 
 // 해당 회원이 접속중인지 체크
-void checkLogon()
+void checkLogon(int clnt_cnt)
 {
     time_t curr_time = time(NULL); // 현재 시간
 
@@ -940,7 +938,7 @@ void checkLogon()
 }
 
 // 클라이언트에게 리스트 시리얼화
-void clientListSerialize(char *message)
+void clientListSerialize(char *message, int clnt_cnt)
 {
     char result[BUF_SIZE] = {0,};
     memset(&result, 0, BUF_SIZE);
@@ -997,7 +995,7 @@ void memberlist_serialize_sendAll(int clnt_cnt)
 {
     // HEARTBEAT_REQ_CODE 실행부처럼
     char send_message[BUF_SIZE] = {0,};
-    clientListSerialize(send_message);
+    clientListSerialize(send_message, clnt_cnt);
 
     for (int i = FIRST_SRL; i < clnt_cnt; i++)
     {
@@ -1035,6 +1033,7 @@ int main(int argc, char **argv)
     fd_set readfds, allfds;     // 클라이언트 배열 순회 용도, 둘의 정확한 차이나 용도는 불명
 
     int i, j;
+    int clnt_cnt;
     int clnt_size;
     int fd_max;
 
@@ -1773,7 +1772,7 @@ int main(int argc, char **argv)
                             printf("\033[1;35m<<\033[0m MemberList \033[1;35mRequested\033[0m at [t: %ld] from %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
 
                             char send_message[BUF_SIZE] = {0,};
-                            clientListSerialize(send_message);
+                            clientListSerialize(send_message, clnt_cnt);
 
                             write(client[i], send_message, BUF_SIZE);
                             printf("\033[1;34m>>\033[0m MemberList \033[1;34mSent\033[0m      at [t: %ld] to   %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
@@ -1953,6 +1952,6 @@ int main(int argc, char **argv)
             }
         }
 
-        checkLogon(); // 로그온 상태 갱신
+        checkLogon(clnt_cnt); // 로그온 상태 갱신
     }
 }
