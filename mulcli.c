@@ -22,6 +22,20 @@
 
 //// 마지막에 아래 정리해서 아래 변수들 함수들 헤더랑 따로 만들어서 담을 것
 
+// 클라이언트 SRL이 시작되는 번호
+// "Undefined cmdcode from 0 [0의 소켓]: 0"이 발생하는 이유를 확인하지 못함
+// 위의 경우는 클라이언트 0이 서버와 다른 PC에서 접속했을 때 더 잘 발생하는 듯?
+// 어디선가 EMPTY 0과 SRL 0을 구분하지 못해 발생하는 것으로 추측하고 있지만 확실하지는 않다.
+//
+// 그런데 아닌 것 같다. SRL이 1로 시작하는데도 cmdcode가 0으로 수신되는 것은 마찬가지이다.
+// 외부 PC에서 문제가 발생하는 것인 듯한데 송수신 속도가 단일 PC 내 통신보다 느려서 그런가?
+//
+// 외부 PC에서 WAITING FOR MULTICAST MESSAGE에서 걸리는 경우도 종종 있는데,
+// 이것의 원인은 실제 PC(windows)의 메모리 부족으로 서버가 멈추는 것에 있기도 하다.
+//
+// 서버가 출력하는 Undefined cmdcode 문구의 발생 위치는 주로 memberlist request/send 바로 다음에 있다.
+#define FIRST_SRL           1
+
 #define BUF_SIZE            1024 * 10   // 임시 크기(1024 * n): 수신 시작과 끝에 대한 cmdcode 추가 사용 >> MMS 수신 구현 전까지
 #define MSG_SIZE            1000 * 10
 #define CMDCODE_SIZE        4           // cmdcode의 크기
@@ -735,25 +749,31 @@ void clientListProcess(char* message)
 
         if(cmd_code == HEARTBEAT_STR_CODE) // Heartbeat가 있을 경우
         {
+            memset(tmp, 0, sizeof(tmp));
             memcpy(&tmp, &message[offset], sizeof(int));
             offset += sizeof(int);
             int member_srl = atoi(tmp);
 
+            memset(&client_data[member_srl].nick, 0, sizeof(&client_data[member_srl].nick));
             memcpy(&client_data[member_srl].nick, &message[offset], sizeof(client_data[member_srl].nick));
             offset += sizeof(client_data[member_srl].nick);
 
+            memset(tmp, 0, sizeof(tmp));
             memcpy(&tmp, &message[offset], sizeof(int));
             offset += sizeof(int);
             client_data[member_srl].logon_status = atoi(tmp);
 
+            memset(tmp, 0, sizeof(tmp));
             memcpy(&tmp, &message[offset], sizeof(int));
             offset += sizeof(int);
             client_data[member_srl].chat_status = atoi(tmp);
 
+            memset(tmp, 0, sizeof(tmp));
             memcpy(&tmp, &message[offset], sizeof(int));
             offset += sizeof(int);
             client_data[member_srl].target = atoi(tmp);
 
+            memset(tmp, 0, sizeof(tmp));
             memcpy(&tmp, &message[offset], sizeof(int));
             offset += sizeof(int);
             client_data[member_srl].is_chatting = atoi(tmp);
@@ -772,13 +792,20 @@ void print_available_clients(int isFirstPrint)
     if (!isFirstPrint) moveCursorUp(named_client_count + 4, 1, 0);
     else printf("\r\n");
 
-    int i;
-    for (i = 0; i < MAX_SOCKS && client_data[i].nick[0]; i++)
-        printf("SRL \033[1m%d\033[0m (%s)\r\n", i, client_data[i].nick);
-    printf("\033[1mTOTAL NAMED CLIENTS:\033[0m %d\r\n", i);
+    // [마지막 클라이언트가 아닌,] 연결 해제된 클라이언트가 있을 때도
+    // 바로 그 시점에서 반복 종료되는 부분 고침
+    int cnt = 0;
+    for (int i = FIRST_SRL; i < MAX_SOCKS; i++)
+    {
+        if (client_data[i].nick[0])
+        {
+            printf("SRL \033[1m%d\033[0m (%s)\r\n", i, client_data[i].nick);
+            cnt++;
+        }
+    }
+    printf("\033[1mTOTAL NAMED CLIENTS:\033[0m %d\r\n", cnt);
 
-    named_client_count = i;
-    // printf("%s", cmd_message);
+    named_client_count = cnt;
     fflush(0);
 }
 
@@ -1011,7 +1038,6 @@ int main(int argc, char *argv[])
                 memcpy(NNAME, buf, NAME_SIZE);
 
                 MEMBER_SRL = atoi(&message[1]);
-                printf("\n\033[1;33mMEMBER_SRL: \033[37m%d\033[0m\n", MEMBER_SRL);
 
                 break;
             }
@@ -1032,10 +1058,15 @@ int main(int argc, char *argv[])
     char listget[BUF_SIZE] = {0,};
     sprintf(listget, "%d", HEARTBEAT_REQ_CODE);
     write(sock, listget, BUF_SIZE);
-    read(sock, message, BUF_SIZE);
 
-    printf("\n\033[1;33mMSG:\033[37m %s\033[0m\n", message);
-    clientListProcess(message); // 클라이언트 리스트 받아옴
+    memset(message, 0, BUF_SIZE);
+
+    // !message[0]: 외부 PC간 송수신 지연으로 인한 읽기 에러? 정확한 원인은 모름
+    while (!message[0]) read(sock, message, BUF_SIZE);
+
+    printf("\n\033[1;33mMEMBER_SRL: \033[37m%d\033[0m\n", MEMBER_SRL);
+    // printf("\n\033[1;33mMSG:\033[37m %s\033[0m\n", message);
+    // clientListProcess(message); // 클라이언트 리스트 받아옴
 
     firstScene();
     for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n");
@@ -1078,22 +1109,48 @@ int main(int argc, char *argv[])
 
     //// if (CHAT_TARGET != -1)
     //// : 타겟 설정 안 됨을 의미함!
+    // sleep(20);
 
     while (1)
     {
         // RECEIVE MESSAGE
         // recv_msg()에서 read()를 실행하여 setsockopt으로 설정한 대기 시간만큼 기다린다.
         // 였는데 보편성 위해 그냥 read()로 바꿈
-        if (read(sock, message, BUF_SIZE) < 0) {
+        if (read(sock, message, BUF_SIZE) <= 0)
+        {
             // printf("No message.\r\n");
+
+            //// 첫 실행 시에는 무조건 read()값 있어야 함
+            // 못 받을 경우 받아 줌
+            if (is_init)
+            {
+                moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
+
+                char listget[BUF_SIZE] = {0,};
+                sprintf(listget, "%d", HEARTBEAT_REQ_CODE);
+                write(sock, listget, BUF_SIZE);
+            }
         }
 
         else
         {
             char cmd_code[5] = {0,};
             memcpy(&cmd_code, &message, sizeof(int));
-
             cmdcode = atoi(cmd_code);
+
+            //// Re-retrieve message
+            while (1)
+            {
+                if (is_init && cmdcode == HEARTBEAT_STR_CODE) break;
+                else if (message[0]) break;
+
+                read(sock, message, BUF_SIZE);
+
+                memcpy(&cmd_code, &message, sizeof(int));
+                cmdcode = atoi(cmd_code);
+            }
+
+            // printf("is_init: %d  cmdcode: %d  ", is_init, cmdcode);fflush(0);sleep(1);
 
             switch (cmdcode)
             {
@@ -1102,6 +1159,8 @@ int main(int argc, char *argv[])
                 case HEARTBEAT_STR_CODE:
                 {
                     clientListProcess(message);
+
+                    if (is_init) { printf("\r\n\n"); is_init = 0; }
 
                     // target이 연결 해제되었을 때
                     // 즉 로컬상 CHAT_TARGET은 > -1인데 수신받은 client_data[]에서의 자기 target은 == -1일때
@@ -1120,7 +1179,6 @@ int main(int argc, char *argv[])
                     // 처음 가입 시 1째로 수행
                     else if (CHAT_TARGET == -1)
                     {
-                        if (is_init) { printf("\r\n\n"); is_init = 0; }
                         moveCursorUp(1, 1, 0);
                         print_available_clients(0);
                         prompt_printed = 0;
@@ -1304,6 +1362,14 @@ int main(int argc, char *argv[])
                 default:
                 {
                     printf("\033[1;31mUndefined\033[37m cmdcode from server: %d\033[0m\r\n", cmdcode);
+                    // sleep(1);
+
+                    // erase "undefined" from stdout
+                    // refine stdout
+                    if (is_init)    moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + 1, 1, 0);
+                    else            moveCursorUp(1, 1, 0);
+                    // printf("imbroken ");
+                    // sleep(1);
 
                     break;
                 }

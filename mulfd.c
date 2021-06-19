@@ -26,6 +26,12 @@
 
 #define TTL  2
 
+// 클라이언트 SRL이 시작되는 번호
+// "Undefined cmdcode from 0 [0의 소켓]: 0"이 발생하는 이유를 확인하지 못함
+// 위의 경우는 클라이언트 0이 서버와 다른 PC에서 접속했을 때 더 잘 발생하는 듯?
+// 어디선가 EMPTY 0과 SRL 0을 구분하지 못해 발생하는 것으로 추측하고 있지만 확실하지는 않다.
+#define FIRST_SRL           1
+
 #define BUF_SIZE            1024 * 10   // 임시 크기(1024 * n): 수신 시작과 끝에 대한 cmdcode 추가 사용 >> MMS 수신 구현 전까지
 #define MSG_SIZE            1000 * 10
 #define CMDCODE_SIZE        4           // cmdcode의 크기
@@ -65,6 +71,8 @@
 #define SERVCLOSED_CMD_CODE     4000
 
 int global_curpos = 0;
+
+int clnt_cnt = 0;
 
 // COMMAND MODE: ESC 눌러서 실행
 int cmdmode = 0;
@@ -178,7 +186,7 @@ void sendAll(int clnt_cnt, int cmdcode, char *sender, char *msg, char *servlog)
     printf("Length of buf: %d\r\n", (int)strlen(msg));
     printf("Total msgsize: %d of %d maximum\r\n", CMDCODE_SIZE + NAME_SIZE + (int)strlen(msg), BUF_SIZE);
 
-    for (i = 0; i < clnt_cnt; i++)
+    for (i = FIRST_SRL; i < clnt_cnt; i++)
     {
         // DISCARD DISCONNECTED OR NAMELESS CLIENTS
         // 서버에서 나갔거나, 닉네임이 설정되지 않은 클라이언트는 무시한다.
@@ -440,7 +448,7 @@ void check_append_emojis(char *msg, char *mdest)
     fflush(stdout);
 }
 
-void check_append_Func(char *msg, char *mdest,int clnt_cnt)
+void check_append_Func(char *msg, char *mdest, int clnt_cnt)
 {
     int randnum; // 랜덤변수
     char *index;
@@ -924,9 +932,9 @@ void checkLogon()
 {
     time_t curr_time = time(NULL); // 현재 시간
 
-    for(int i = 0; i < MAX_SOCKS; i++)
+    for (int i = FIRST_SRL; i < clnt_cnt; i++)
     {
-        if(difftime(curr_time, client_data[i].last_heartbeat_time) > 10) // 마지막 heartbeat로부터 10초 이상 지났을 경우
+        if (difftime(curr_time, client_data[i].last_heartbeat_time) > 10) // 마지막 heartbeat로부터 10초 이상 지났을 경우
         {
             client_data[i].logon_status = 0; // 로그온 안된거로 체크
         }
@@ -942,7 +950,7 @@ void clientListSerialize(char *message)
     char tmp[5] = {0,};
     int offset = 0;
 
-    for(int i = 0; i < MAX_SOCKS; i++)
+    for (int i = FIRST_SRL; i < clnt_cnt; i++)
     {
         // cmdcode: HEARTBEAT_STR_CODE
         memset(tmp, 0, sizeof(tmp));
@@ -993,7 +1001,7 @@ void memberlist_serialize_sendAll(int clnt_cnt)
     char send_message[BUF_SIZE] = {0,};
     clientListSerialize(send_message);
 
-    for (int i = 0; i < clnt_cnt; i++)
+    for (int i = FIRST_SRL; i < clnt_cnt; i++)
     {
         if (client[i] < 0 || names[i][0] == 0) continue;
 
@@ -1029,7 +1037,7 @@ int main(int argc, char **argv)
     fd_set readfds, allfds;     // 클라이언트 배열 순회 용도, 둘의 정확한 차이나 용도는 불명
 
     int i, j;
-    int clnt_size, clnt_cnt;
+    int clnt_size;
     int fd_max;
 
     /* buf[]와 message[]의 용도 규칙은 따로 없으나
@@ -1103,7 +1111,7 @@ int main(int argc, char **argv)
     memset(client, -1, sizeof(int) * MAX_SOCKS);
 
     // client_data 초기화
-    for (int i = 0; i < MAX_SOCKS; i++)
+    for (int i = FIRST_SRL; i < MAX_SOCKS; i++)
     {
         memset(client_data[i].nick, 0, NAME_SIZE);
         client_data[i].target = -1;
@@ -1116,7 +1124,7 @@ int main(int argc, char **argv)
 
     fd_max = serv_sock;
 
-    for (int i = 0; i < MAX_SOCKS; i++) client[i] = -1;
+    for (int i = FIRST_SRL; i < MAX_SOCKS; i++) client[i] = -1;
 
     FD_ZERO(&readfds);
     // FD_SET(udp_sock, &readfds);
@@ -1235,7 +1243,7 @@ int main(int argc, char **argv)
             memset(buf, 0, BUF_SIZE);
             sprintf(buf, "%d", HEARTBEAT_CMD_CODE);
 
-            for (i = 0; i < clnt_cnt; i++)
+            for (i = FIRST_SRL; i < clnt_cnt; i++)
             {
                 // DISCONNECT CLIENT에서 연결 해제되면 알아서 그만 보냄
                 if (names[i][0] == 0) continue;
@@ -1288,7 +1296,7 @@ int main(int argc, char **argv)
                     // 서버가 종료되었다고 알림
                     memset(buf, 0, BUF_SIZE);
                     sprintf(buf, "%d", SERVCLOSED_CMD_CODE);
-                    for (int i = 0; i < clnt_cnt; i++)
+                    for (int i = FIRST_SRL; i < clnt_cnt; i++)
                     {
                         if (client[i] < 0 || names[i][0] == 0) continue;
                         write(client[i], buf, BUF_SIZE);
@@ -1549,7 +1557,7 @@ int main(int argc, char **argv)
                         check_append_emojis(buf, mdest);
 
                         // CHECK FOR DICE
-                        check_append_Func(mdest[0] ? mdest : buf, mdest,clnt_cnt);
+                        check_append_Func(mdest[0] ? mdest : buf, mdest, clnt_cnt);
 
                         memcpy(&umdest[strlen(umdest)], mdest, strlen(mdest));  // but also only while strlen(mdest) < MSG_SIZE - 24.
                         if (mdest[0]) strcat(umdest, "\r\n");
@@ -1633,6 +1641,7 @@ int main(int argc, char **argv)
         else global_curpos = getCurposFromListptr(blist, bp);
 
         // ACCEPT CLIENT TO SERVER SOCK
+        // 여기서 clnt_cnt는 증가하기만 한다. 감소하는 설정은 없다.
         if (FD_ISSET(serv_sock, &allfds))
         {
             clnt_size = sizeof(clnt_addr);
@@ -1647,7 +1656,7 @@ int main(int argc, char **argv)
             prompt_printed = 0;
 
             printf("\033[1m");
-            for (i = 0; i < MAX_SOCKS; i++)
+            for (i = FIRST_SRL; i < MAX_SOCKS; i++)
             {
                 if (client[i] < 0)
                 {
@@ -1676,7 +1685,7 @@ int main(int argc, char **argv)
         }
 
         // CHECK CLIENT SOCKET
-        for (i = 0; i < clnt_cnt; i++)
+        for (i = FIRST_SRL; i < clnt_cnt; i++)
         {
             if (client[i] < 0) continue;
 
@@ -1726,8 +1735,7 @@ int main(int argc, char **argv)
                 else
                 {
                     char cmd_code[5] = {0,};
-                    memcpy(&cmd_code, &buf, sizeof(int)); // 앞에서 4바이트만 받아옴
-
+                    memcpy(&cmd_code, &buf, sizeof(int));
                     int cmdcode = atoi(cmd_code);
 
                     if (cmdcode != HEARTBEAT_CMD_CODE)
@@ -1785,7 +1793,6 @@ int main(int argc, char **argv)
                             // 해당 클라이언트 연결이 없거나 이름 설정 안 되어 있음
                             if (client[req_to] == -1 || names[req_to][0] <= 0)
                             {
-                                printf("%d\r\n", client[req_to]);
                                 printf("\033[1;32m%d is not an existing client.\033[0m\r\n", req_to);
                                 send_singlechat_response(serv_sock, client[i], 0);
                             }
@@ -1836,7 +1843,7 @@ int main(int argc, char **argv)
                         {
                             // CHECK IF REQUESTED NAME IS TAKEN
                             int taken = 0;
-                            for (j = 0; !taken && j < clnt_cnt; j++)
+                            for (j = FIRST_SRL; !taken && j < clnt_cnt; j++)
                                 if (!strcmp(&buf[CMDCODE_SIZE], names[j])) taken = 1;
 
                             //// REJECTED
