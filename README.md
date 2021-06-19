@@ -21,9 +21,11 @@ char mulcast_addr[] = "239.0.100.1";
 정성원 | ![none](https://img.shields.io/badge/-none-b1b1b1) |
 이용우 | ![none](https://img.shields.io/badge/-none-b1b1b1) |
 
-<!-- <sub>문서 작업은 고단한 일입니다!</sub> -->
+<!--
+<sub>문서 작업은 고단한 일입니다!</sub>
 
-<!-- <sup><sup>제가 확실히 알지 못하는 코드 주석은 <sub>거의</sub> 작성하지 않습니다!</sup></sup> -->
+<sup><sup>제가 확실히 알지 못하는 코드 주석은 <sub>거의</sub> 작성하지 않습니다!</sup></sup>
+-->
 
 ## Sources
 
@@ -871,4 +873,4 @@ Input message(CTRL+C to quit):
   ```
 </details>
 
-<sup><sub>아 참고로 주석은 제가 떠드는 공간인 거 아시죠??</sub></sup>
+<!-- <sup><sub>아 참고로 주석은 제가 떠드는 공간인 거 아시죠??</sub></sup> -->

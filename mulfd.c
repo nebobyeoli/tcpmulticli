@@ -26,6 +26,12 @@
 
 #define TTL  2
 
+// 클라이언트 SRL이 시작되는 번호
+// "Undefined cmdcode from 0 [0의 소켓]: 0"이 발생하는 이유를 확인하지 못함
+// 위의 경우는 클라이언트 0이 서버와 다른 PC에서 접속했을 때 더 잘 발생하는 듯?
+// 어디선가 EMPTY 0과 SRL 0을 구분하지 못해 발생하는 것으로 추측하고 있지만 확실하지는 않다.
+#define FIRST_SRL           1
+
 #define BUF_SIZE            1024 * 10   // 임시 크기(1024 * n): 수신 시작과 끝에 대한 cmdcode 추가 사용 >> MMS 수신 구현 전까지
 #define MSG_SIZE            1000 * 10
 #define CMDCODE_SIZE        4           // cmdcode의 크기
@@ -65,6 +71,8 @@
 #define SERVCLOSED_CMD_CODE     4000
 
 int global_curpos = 0;
+
+int clnt_cnt = 0;
 
 // COMMAND MODE: ESC 눌러서 실행
 int cmdmode = 0;
@@ -116,8 +124,7 @@ int emojiCnt = 0;
 struct
 {
     char title[EMOJI_TITLELEN_MAX];     // 이모티콘 파일명 저장
-    unsigned int len;                   // long int ftell(FILE* stream)
-
+    long int len;                       // from long int ftell(FILE* stream)
 } emojis[EMOJI_VARIANT_MAX];
 
 struct sClient
@@ -133,11 +140,11 @@ struct sClient
 
 struct HeartBeatPacket
 {
-    int cmd_code;
-    int member_srl;
-    int chat_status;
-    int target;
-    int is_chatting;
+    int cmd_code;       // HEARTBEAT 전송 CMDCODE
+    int member_srl;     // 클라이언트 고유번호
+    int chat_status;    // 채팅 상대가 있는지 (idle = 0, personal_chat = 1, channel_chat = 2)
+    int target;         // 채팅 상대
+    int is_chatting;    // 타이핑 중인지
 };
 
 // 함수명 변경: error_handling() >> perror_exit()
@@ -179,7 +186,7 @@ void sendAll(int clnt_cnt, int cmdcode, char *sender, char *msg, char *servlog)
     printf("Length of buf: %d\r\n", (int)strlen(msg));
     printf("Total msgsize: %d of %d maximum\r\n", CMDCODE_SIZE + NAME_SIZE + (int)strlen(msg), BUF_SIZE);
 
-    for (i = 0; i < clnt_cnt; i++)
+    for (i = FIRST_SRL; i < clnt_cnt; i++)
     {
         // DISCARD DISCONNECTED OR NAMELESS CLIENTS
         // 서버에서 나갔거나, 닉네임이 설정되지 않은 클라이언트는 무시한다.
@@ -196,6 +203,7 @@ void send_singlechat_request(int from, int to_sock)
 
     sprintf(pass, "%d", SINGLECHAT_REQ_CODE);
     sprintf(&pass[CMDCODE_SIZE], "%d", from);
+
     write(to_sock, pass, CMDCODE_SIZE * 2);
 }
 
@@ -206,6 +214,7 @@ void send_singlechat_response(int from, int to_sock, int accepted)
     sprintf(pass, "%d", SINGLECHAT_RESP_CODE);
     sprintf(&pass[CMDCODE_SIZE], "%d", from);
     sprintf(&pass[CMDCODE_SIZE * 2], "%d", accepted);
+
     write(to_sock, pass, CMDCODE_SIZE * 3);
 }
 
@@ -325,7 +334,7 @@ void check_append_emojis(char *msg, char *mdest)
 
     // CAST TO INT FOR MEMORY LOCATION INDICATION
     // GET THE SIZE VALUE INBETWEEN
-    unsigned int inbet;
+    unsigned long int inbet;
 
     // message and mdest ROLE SWAP
     int swap = 0;
@@ -366,7 +375,7 @@ void check_append_emojis(char *msg, char *mdest)
 
         // emoji.txt의 데이터 대입
         size_t newLen = fread(tmp_emoji, sizeof(char), LEN, fp);
-        if (ferror(fp) != 0) { fputs("Error reading file %s :(\r\n", cd); exit(1); }
+        if (ferror(fp) != 0) { printf("Error reading file %s :(\r\n", cd); exit(1); }
         else tmp_emoji[newLen] = 0;
 
         fclose(fp);
@@ -385,30 +394,25 @@ void check_append_emojis(char *msg, char *mdest)
             // ㄴ은 니은이다
             printf("\r\n==============================================\r\n------------------------------------------\r\n%s\r\n\nㄴ==> Before swap", message);
 
-            // 이거 약간 불법 비슷하게 볼 수도 있겠다
-            // 일단 배열 자체를 int 치환하기 때문이다
-            // 으 하
+            // message와 mdest 간 자리 교체 여부
             if (swap)
             {
                 // sub 문자열과 원본 문자열 메모리 위치의 차를 이용해
                 // 배열 index로 사용할 수 있는 시작 position을 구한다
-                inbet = (int)index - (int)mdest;
+                inbet = (long int)index - (long int)mdest;
 
                 // 일단 복사한다
                 memcpy(message, mdest, inbet);
 
                 // 원본 배열 내, 아까 메모리 위치 차로 구한 position index 부터 실제 emoji를 삽입하고
                 // 그 뒤에 :emoji: 뒤의 나머지 문자열을 추가 삽입한다
-                // 배열 크기들을 잘 보고 조심만 하면 sprintf와 strcat가 은어를 감탄사로 사용하게 할 만큼 정말 편하다
-                // 역시 스트링
                 // 나머지 문자열 추가 삽입은 :emoji:의 크기, 즉 strlen(TOKEN)을 이용해
-                // 나머지 문자열의 시작 위치를 구해서 사용하면
-                // 된다
+                // 나머지 문자열의 시작 위치를 구해서 사용하면 된다
+                memset(&message[inbet], 0, sizeof(&message[inbet]));
                 sprintf(&message[inbet], "\r\n%s\r\n%s", tmp_emoji, &mdest[inbet + strlen(TOKEN)]);
 
                 // 이제 다음 이모티콘 삽입에서의 역할 교환을 위해
                 // 원본 배열에 emoji 삽입된 배열을 복사해 준다
-                // 굳!
                 memcpy(mdest, message, MSG_SIZE);
 
                 printf("\r\n------------------------------------------\r\n%s\r\n\nㄴ==> After swap\r\n------------------------------------------\r\ni = %d, swapped %s\r\n==============================================\r\n", message, i, TOKEN);
@@ -416,13 +420,13 @@ void check_append_emojis(char *msg, char *mdest)
                 swap = 0;
             }
 
-            // 위와 똑같은 내용이다 다만
-            // message와 mdest의 자리가 서로 바뀌었을 뿐이다
+            // 위와 같음, message와 mdest 자리 바뀜
             else
             {
-                inbet = (int)index - (int)message;
+                inbet = (long int)index - (long int)message;
 
                 memcpy(mdest, message, inbet);
+                memset(&mdest[inbet], 0, sizeof(&mdest[inbet]));
                 sprintf(&mdest[inbet], "\r\n%s\r\n%s", tmp_emoji, &message[inbet + strlen(TOKEN)]);
                 memcpy(message, mdest, MSG_SIZE);
 
@@ -442,7 +446,7 @@ void check_append_emojis(char *msg, char *mdest)
     fflush(stdout);
 }
 
-void check_append_Func(char *msg, char *mdest,int clnt_cnt)
+void check_append_Func(char *msg, char *mdest, int clnt_cnt)
 {
     int randnum; // 랜덤변수
     char *index;
@@ -458,6 +462,7 @@ void check_append_Func(char *msg, char *mdest,int clnt_cnt)
         memset(&index[remaining_len], 0, remaining_len + 1);
 
         randnum = rand() % 100 + 1; // 0~99
+        memset(getNum, 0, sizeof(getNum));
         itoa(randnum, getNum);
 
         strcpy(message, dice_message[(randnum-1) / 10]);
@@ -680,6 +685,8 @@ list_node_t* transfer_list_data(char *buf, list_t *list, int emptylist)
     list_iterator_t *it = list_iterator_new(list, LIST_HEAD);
 
     int offset = 0;
+
+    memset(buf, 0, BUF_SIZE);
 
     // 각 노드에 단일 char가 저장되어 있는 list의 입력 데이터를
     // buf 배열에 저장!
@@ -923,9 +930,9 @@ void checkLogon()
 {
     time_t curr_time = time(NULL); // 현재 시간
 
-    for(int i = 0; i < MAX_SOCKS; i++)
+    for (int i = FIRST_SRL; i < clnt_cnt; i++)
     {
-        if(difftime(curr_time, client_data[i].last_heartbeat_time) > 10) // 마지막 heartbeat로부터 10초 이상 지났을 경우
+        if (difftime(curr_time, client_data[i].last_heartbeat_time) > 10) // 마지막 heartbeat로부터 10초 이상 지났을 경우
         {
             client_data[i].logon_status = 0; // 로그온 안된거로 체크
         }
@@ -941,31 +948,43 @@ void clientListSerialize(char *message)
     char tmp[5] = {0,};
     int offset = 0;
 
-    for(int i = 0; i < MAX_SOCKS; i++)
+    for (int i = FIRST_SRL; i < clnt_cnt; i++)
     {
+        // cmdcode: HEARTBEAT_STR_CODE
+        memset(tmp, 0, sizeof(tmp));
         itoa(HEARTBEAT_STR_CODE, tmp);
         memcpy(&result[offset], &tmp, sizeof(int));
         offset += sizeof(int);
 
-        itoa(i, tmp); // member_srl
+        // member_srl: i
+        memset(tmp, 0, sizeof(tmp));
+        itoa(i, tmp);
         memcpy(&result[offset], &tmp, sizeof(int));
         offset += sizeof(int);
 
+        // nickname
         memcpy(&result[offset], &client_data[i].nick, sizeof(client_data[i].nick));
         offset += sizeof(client_data[i].nick);
 
+        memset(tmp, 0, sizeof(tmp));
         itoa(client_data[i].logon_status, tmp);
         memcpy(&result[offset], &tmp, sizeof(int));
         offset += sizeof(int);
 
+        // chat_status
+        memset(tmp, 0, sizeof(tmp));
         itoa(client_data[i].chat_status, tmp);
         memcpy(&result[offset], &tmp, sizeof(int));
         offset += sizeof(int);
 
+        // target
+        memset(tmp, 0, sizeof(tmp));
         itoa(client_data[i].target, tmp);
         memcpy(&result[offset], &tmp, sizeof(int));
         offset += sizeof(int);
 
+        // is_chatting
+        memset(tmp, 0, sizeof(tmp));
         itoa(client_data[i].is_chatting, tmp);
         memcpy(&result[offset], &tmp, sizeof(int));
         offset += sizeof(int);
@@ -980,7 +999,7 @@ void memberlist_serialize_sendAll(int clnt_cnt)
     char send_message[BUF_SIZE] = {0,};
     clientListSerialize(send_message);
 
-    for (int i = 0; i < clnt_cnt; i++)
+    for (int i = FIRST_SRL; i < clnt_cnt; i++)
     {
         if (client[i] < 0 || names[i][0] == 0) continue;
 
@@ -1000,12 +1019,6 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    for (int i = 0; i < MAX_SOCKS; i++)
-    {
-        memset(client_data[i].nick, 0, sizeof(client_data[i].nick));
-        client_data[i].target = -1;
-    }
-
     // https://stackoverflow.com/a/34550798
     DIR *dirp = opendir("./emojis");
     static struct dirent *dir;
@@ -1022,7 +1035,7 @@ int main(int argc, char **argv)
     fd_set readfds, allfds;     // 클라이언트 배열 순회 용도, 둘의 정확한 차이나 용도는 불명
 
     int i, j;
-    int clnt_size, clnt_cnt;
+    int clnt_size;
     int fd_max;
 
     /* buf[]와 message[]의 용도 규칙은 따로 없으나
@@ -1091,9 +1104,16 @@ int main(int argc, char **argv)
     state = listen(serv_sock, 5);
     if (state == -1) perror_exit("TCP listen() error!\n");
 
-    clnt_sock = serv_sock;
-
     ////// INITIALIZE //////
+
+    memset(client, -1, sizeof(int) * MAX_SOCKS);
+
+    // client_data 초기화
+    for (int i = FIRST_SRL; i < MAX_SOCKS; i++)
+    {
+        memset(client_data[i].nick, 0, NAME_SIZE);
+        client_data[i].target = -1;
+    }
 
     /* 원본 iomux_select.c에서 clnt_cnt 조건 수정: 실제 개수로써 사용되도록.
      * 아래 클라이언트 반복문에서도 값 설정 때 i가 아닌 i + 1과 비교하고 대입하여 사용
@@ -1102,7 +1122,7 @@ int main(int argc, char **argv)
 
     fd_max = serv_sock;
 
-    for (int i = 0; i < MAX_SOCKS; i++) client[i] = -1;
+    for (int i = FIRST_SRL; i < MAX_SOCKS; i++) client[i] = -1;
 
     FD_ZERO(&readfds);
     // FD_SET(udp_sock, &readfds);
@@ -1218,10 +1238,10 @@ int main(int argc, char **argv)
             int has_client = 0;
 
             // HEARTBEAT REQUEST MESSAGE
-            char req[CMDCODE_SIZE + 1] = {0,};
-            sprintf(req, "%d", HEARTBEAT_CMD_CODE);
+            memset(buf, 0, BUF_SIZE);
+            sprintf(buf, "%d", HEARTBEAT_CMD_CODE);
 
-            for (i = 0; i < clnt_cnt; i++)
+            for (i = FIRST_SRL; i < clnt_cnt; i++)
             {
                 // DISCONNECT CLIENT에서 연결 해제되면 알아서 그만 보냄
                 if (names[i][0] == 0) continue;
@@ -1243,7 +1263,7 @@ int main(int argc, char **argv)
                     }
                 }
 
-                write(client[i], req, CMDCODE_SIZE);
+                write(client[i], buf, BUF_SIZE);
 
                 printf("\r\n\033[1;34m>> HEARTBEAT\033[0m at [t: %ld] to   %d [%d] (%s)\r\n", (now = time(0)) - inittime, i, client[i], names[i]);
             }
@@ -1274,7 +1294,7 @@ int main(int argc, char **argv)
                     // 서버가 종료되었다고 알림
                     memset(buf, 0, BUF_SIZE);
                     sprintf(buf, "%d", SERVCLOSED_CMD_CODE);
-                    for (int i = 0; i < clnt_cnt; i++)
+                    for (int i = FIRST_SRL; i < clnt_cnt; i++)
                     {
                         if (client[i] < 0 || names[i][0] == 0) continue;
                         write(client[i], buf, BUF_SIZE);
@@ -1535,7 +1555,7 @@ int main(int argc, char **argv)
                         check_append_emojis(buf, mdest);
 
                         // CHECK FOR DICE
-                        check_append_Func(mdest[0] ? mdest : buf, mdest,clnt_cnt);
+                        check_append_Func(mdest[0] ? mdest : buf, mdest, clnt_cnt);
 
                         memcpy(&umdest[strlen(umdest)], mdest, strlen(mdest));  // but also only while strlen(mdest) < MSG_SIZE - 24.
                         if (mdest[0]) strcat(umdest, "\r\n");
@@ -1619,6 +1639,7 @@ int main(int argc, char **argv)
         else global_curpos = getCurposFromListptr(blist, bp);
 
         // ACCEPT CLIENT TO SERVER SOCK
+        // 여기서 clnt_cnt는 증가하기만 한다. 감소하는 설정은 없다.
         if (FD_ISSET(serv_sock, &allfds))
         {
             clnt_size = sizeof(clnt_addr);
@@ -1633,7 +1654,7 @@ int main(int argc, char **argv)
             prompt_printed = 0;
 
             printf("\033[1m");
-            for (i = 0; i < MAX_SOCKS; i++)
+            for (i = FIRST_SRL; i < MAX_SOCKS; i++)
             {
                 if (client[i] < 0)
                 {
@@ -1662,7 +1683,7 @@ int main(int argc, char **argv)
         }
 
         // CHECK CLIENT SOCKET
-        for (i = 0; i < clnt_cnt; i++)
+        for (i = FIRST_SRL; i < clnt_cnt; i++)
         {
             if (client[i] < 0) continue;
 
@@ -1712,8 +1733,7 @@ int main(int argc, char **argv)
                 else
                 {
                     char cmd_code[5] = {0,};
-                    memcpy(&cmd_code, &buf, sizeof(int)); // 앞에서 4바이트만 받아옴
-
+                    memcpy(&cmd_code, &buf, sizeof(int));
                     int cmdcode = atoi(cmd_code);
 
                     if (cmdcode != HEARTBEAT_CMD_CODE)
@@ -1821,7 +1841,7 @@ int main(int argc, char **argv)
                         {
                             // CHECK IF REQUESTED NAME IS TAKEN
                             int taken = 0;
-                            for (j = 0; !taken && j < clnt_cnt; j++)
+                            for (j = FIRST_SRL; !taken && j < clnt_cnt; j++)
                                 if (!strcmp(&buf[CMDCODE_SIZE], names[j])) taken = 1;
 
                             //// REJECTED
@@ -1915,9 +1935,10 @@ int main(int argc, char **argv)
                         }
 
                         //// FAILED TO IDENTIFY CMDCODE ////
+                        //// UNDEFINED CMDCODE FROM CLIENT ////
                         default:
                         {
-                            printf("\033[1;31mError\033[37m reading cmdcode [%d] from %d [%d]!\033[0m\r\n", cmdcode, i, client[i]);
+                            printf("\033[1;31mUndefined\033[37m cmdcode from %d [%d]: %d\033[0m\r\n", i, client[i], cmdcode);
 
                             break;
                         }

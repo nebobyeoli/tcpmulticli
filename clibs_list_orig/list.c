@@ -5,19 +5,6 @@
 // Copyright (c) 2010 TJ Holowaychuk <tj@vision-media.ca>
 //
 
-//
-// Modified for nebobyeoli/tcpmulticli:
-//
-// The original clibs/list used [void pointer] types for node vals.
-//
-// But here it uses an integer [char] type instead,
-// since void pointers cannot be dereferenced without an int* cast
-// and it was the best possible solution for this 'node value not as a pointer' situation.
-//
-// - even with the cast(removes the warnings), the casted val would be recognized as a memory address
-// - and thus it crashes as a [Segmentation fault (core dumped)] after server init stdouts.
-//
-
 #include "list.h"
 
 /*
@@ -52,9 +39,6 @@ list_destroy(list_t *self) {
     if (self->free) self->free(curr->val);
     LIST_FREE(curr);
     curr = next;
-    
-    // appended from tcpmulticli: for checking the point of -core dumpnation-
-    // printf("[not yet, len: %d]\r\n", len);
   }
 
   LIST_FREE(self);
@@ -151,7 +135,7 @@ list_lpush(list_t *self, list_node_t *node) {
  */
 
 list_node_t *
-list_find(list_t *self, char val) {
+list_find(list_t *self, void *val) {
   list_iterator_t *it = list_iterator_new(self, LIST_HEAD);
   list_node_t *node;
 

@@ -22,6 +22,20 @@
 
 //// 마지막에 아래 정리해서 아래 변수들 함수들 헤더랑 따로 만들어서 담을 것
 
+// 클라이언트 SRL이 시작되는 번호
+// "Undefined cmdcode from 0 [0의 소켓]: 0"이 발생하는 이유를 확인하지 못함
+// 위의 경우는 클라이언트 0이 서버와 다른 PC에서 접속했을 때 더 잘 발생하는 듯?
+// 어디선가 EMPTY 0과 SRL 0을 구분하지 못해 발생하는 것으로 추측하고 있지만 확실하지는 않다.
+//
+// 그런데 아닌 것 같다. SRL이 1로 시작하는데도 cmdcode가 0으로 수신되는 것은 마찬가지이다.
+// 외부 PC에서 문제가 발생하는 것인 듯한데 송수신 속도가 단일 PC 내 통신보다 느려서 그런가?
+//
+// 외부 PC에서 WAITING FOR MULTICAST MESSAGE에서 걸리는 경우도 종종 있는데,
+// 이것의 원인은 실제 PC(windows)의 메모리 부족으로 서버가 멈추는 것에 있기도 하다.
+//
+// 서버가 출력하는 Undefined cmdcode 문구의 발생 위치는 주로 memberlist request/send 바로 다음에 있다.
+#define FIRST_SRL           1
+
 #define BUF_SIZE            1024 * 10   // 임시 크기(1024 * n): 수신 시작과 끝에 대한 cmdcode 추가 사용 >> MMS 수신 구현 전까지
 #define MSG_SIZE            1000 * 10
 #define CMDCODE_SIZE        4           // cmdcode의 크기
@@ -96,7 +110,7 @@ struct sClient
 {
     int logon_status;           // logon 되어있으면 1, 아니면 0
     char nick[NAME_SIZE];
-    int CHAT_STATUS;            // idle = 0, personal_chat = 1, channel_chat = 2
+    int chat_status;            // idle = 0, personal_chat = 1, channel_chat = 2
     int target;                 // 타겟 번호. 개인채팅이면 타겟 member_srl, 단체면 channel
     int is_chatting;            // 채팅 중인지
     time_t last_heartbeat_time; // 마지막 heartbeat을 받은 시간
@@ -105,11 +119,11 @@ struct sClient
 
 struct HeartBeatPacket
 {
-    int cmd_code;
-    int member_srl;
-    int CHAT_STATUS;
-    int target;
-    int is_chatting;
+    int cmd_code;       // HEARTBEAT 전송 CMDCODE
+    int member_srl;     // 클라이언트 고유번호
+    int chat_status;    // 채팅 상대가 있는지 (idle = 0, personal_chat = 1, channel_chat = 2)
+    int target;         // 채팅 상대
+    int is_chatting;    // 타이핑 중인지
 };
 
 // 함수명 변경: error_handling() >> perror_exit()
@@ -203,6 +217,7 @@ void send_singlechat_request(int member_srl)
 
     sprintf(pass, "%d", SINGLECHAT_REQ_CODE);
     sprintf(&pass[CMDCODE_SIZE], "%d", member_srl);
+
     write(sock, pass, CMDCODE_SIZE * 2);
 }
 
@@ -213,6 +228,7 @@ void send_singlechat_response(int member_srl, int accepted)
     sprintf(pass, "%d", SINGLECHAT_RESP_CODE);
     sprintf(&pass[CMDCODE_SIZE], "%d", member_srl);
     sprintf(&pass[CMDCODE_SIZE * 2], "%d", accepted);
+
     write(sock, pass, CMDCODE_SIZE * 3);
 }
 
@@ -494,6 +510,8 @@ list_node_t* transfer_list_data(char *buf, list_t *list, int emptylist)
 
     int offset = 0;
 
+    memset(buf, 0, BUF_SIZE);
+
     // 각 노드에 단일 char가 저장되어 있는 list의 입력 데이터를
     // buf 배열에 저장!
     while (node = list_iterator_next(it))
@@ -704,7 +722,7 @@ void heartbeatSerialize(char *message, struct HeartBeatPacket *hbp)
     memcpy(&result[offset], &tmp, sizeof(int));
     offset += sizeof(int);
 
-    itoa(hbp->CHAT_STATUS, tmp);
+    itoa(hbp->chat_status, tmp);
     memcpy(&result[offset], &tmp, sizeof(int));
     offset += sizeof(int);
 
@@ -731,25 +749,31 @@ void clientListProcess(char* message)
 
         if(cmd_code == HEARTBEAT_STR_CODE) // Heartbeat가 있을 경우
         {
+            memset(tmp, 0, sizeof(tmp));
             memcpy(&tmp, &message[offset], sizeof(int));
             offset += sizeof(int);
             int member_srl = atoi(tmp);
 
+            memset(&client_data[member_srl].nick, 0, sizeof(&client_data[member_srl].nick));
             memcpy(&client_data[member_srl].nick, &message[offset], sizeof(client_data[member_srl].nick));
             offset += sizeof(client_data[member_srl].nick);
 
+            memset(tmp, 0, sizeof(tmp));
             memcpy(&tmp, &message[offset], sizeof(int));
             offset += sizeof(int);
             client_data[member_srl].logon_status = atoi(tmp);
 
+            memset(tmp, 0, sizeof(tmp));
             memcpy(&tmp, &message[offset], sizeof(int));
             offset += sizeof(int);
-            client_data[member_srl].CHAT_STATUS = atoi(tmp);
+            client_data[member_srl].chat_status = atoi(tmp);
 
+            memset(tmp, 0, sizeof(tmp));
             memcpy(&tmp, &message[offset], sizeof(int));
             offset += sizeof(int);
             client_data[member_srl].target = atoi(tmp);
 
+            memset(tmp, 0, sizeof(tmp));
             memcpy(&tmp, &message[offset], sizeof(int));
             offset += sizeof(int);
             client_data[member_srl].is_chatting = atoi(tmp);
@@ -768,13 +792,20 @@ void print_available_clients(int isFirstPrint)
     if (!isFirstPrint) moveCursorUp(named_client_count + 4, 1, 0);
     else printf("\r\n");
 
-    int i;
-    for (i = 0; i < MAX_SOCKS && client_data[i].nick[0]; i++)
-        printf("SRL \033[1m%d\033[0m (%s)\r\n", i, client_data[i].nick);
-    printf("\033[1mTOTAL NAMED CLIENTS:\033[0m %d\r\n", i);
+    // [마지막 클라이언트가 아닌,] 연결 해제된 클라이언트가 있을 때도
+    // 바로 그 시점에서 반복 종료되는 부분 고침
+    int cnt = 0;
+    for (int i = FIRST_SRL; i < MAX_SOCKS; i++)
+    {
+        if (client_data[i].nick[0])
+        {
+            printf("SRL \033[1m%d\033[0m (%s)\r\n", i, client_data[i].nick);
+            cnt++;
+        }
+    }
+    printf("\033[1mTOTAL NAMED CLIENTS:\033[0m %d\r\n", cnt);
 
-    named_client_count = i;
-    // printf("%s", cmd_message);
+    named_client_count = cnt;
     fflush(0);
 }
 
@@ -879,19 +910,19 @@ int main(int argc, char *argv[])
     memset(&mul_addr, 0, sizeof(mul_addr));
     mul_addr.sin_family = AF_INET;
     mul_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    mul_addr.sin_port = htons(9000);
+    mul_addr.sin_port = htons(atoi(argv[1]));
 
     join_addr.imr_multiaddr.s_addr = inet_addr(TEAM_MULCAST_ADDR);
     join_addr.imr_interface.s_addr = htonl(INADDR_ANY);
     setsockopt(udp_sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void*)&join_addr, sizeof(join_addr));
 
     state = bind(udp_sock, (struct sockaddr *)&mul_addr, sizeof(mul_addr));
-    if (state == -1) perror_exit("UDP bind() error");
+    if (state == -1) perror_exit("UDP bind() error: Is another client already open in this PC?\r\n");
 
     printf("\n\033[1;4;33mCONNECTED TO \033[36mUDP\033[33m MULTICAST.\033[0m\n\n");
 
-    // 모든 입력 무시
-    set_conio_terminal_mode();
+    // // 모든 입력 무시
+    // set_conio_terminal_mode();
 
     memset(&buf, 0, sizeof(buf));
     int _serv_port = 0;
@@ -908,7 +939,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    if (kbhit()) getch();
+    // if (kbhit()) getch();
 
     int t_offset = 0;
 
@@ -925,8 +956,8 @@ int main(int argc, char *argv[])
     printf("\033[1;35m<<\033[37m PORT      : %d\033[0m\r\n", _serv_port);
     fflush(0);
 
-    // 입력 모드 재개
-    reset_terminal_mode();
+    // // 입력 모드 재개
+    // reset_terminal_mode();
 
     //// TCP 소켓, 연결 설정
 
@@ -985,6 +1016,7 @@ int main(int argc, char *argv[])
 
         else
         {
+            memset(message, 0, SETNAME_CMD_CODE);
             sprintf(message, "%d", SETNAME_CMD_CODE);
             sprintf(&message[CMDCODE_SIZE], "%s", buf);
 
@@ -1006,7 +1038,6 @@ int main(int argc, char *argv[])
                 memcpy(NNAME, buf, NAME_SIZE);
 
                 MEMBER_SRL = atoi(&message[1]);
-                printf("\n\033[1;33mMEMBER_SRL: \033[37m%d\033[0m\n", MEMBER_SRL);
 
                 break;
             }
@@ -1027,10 +1058,15 @@ int main(int argc, char *argv[])
     char listget[BUF_SIZE] = {0,};
     sprintf(listget, "%d", HEARTBEAT_REQ_CODE);
     write(sock, listget, BUF_SIZE);
-    read(sock, message, BUF_SIZE);
 
-    printf("\n\033[1;33mMSG:\033[37m %s\033[0m\n", message);
-    clientListProcess(message); // 클라이언트 리스트 받아옴
+    memset(message, 0, BUF_SIZE);
+
+    // !message[0]: 외부 PC간 송수신 지연으로 인한 읽기 에러? 정확한 원인은 모름
+    while (!message[0]) read(sock, message, BUF_SIZE);
+
+    printf("\n\033[1;33mMEMBER_SRL: \033[37m%d\033[0m\n", MEMBER_SRL);
+    // printf("\n\033[1;33mMSG:\033[37m %s\033[0m\n", message);
+    // clientListProcess(message); // 클라이언트 리스트 받아옴
 
     firstScene();
     for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n");
@@ -1073,22 +1109,48 @@ int main(int argc, char *argv[])
 
     //// if (CHAT_TARGET != -1)
     //// : 타겟 설정 안 됨을 의미함!
+    // sleep(20);
 
     while (1)
     {
         // RECEIVE MESSAGE
         // recv_msg()에서 read()를 실행하여 setsockopt으로 설정한 대기 시간만큼 기다린다.
         // 였는데 보편성 위해 그냥 read()로 바꿈
-        if (read(sock, message, BUF_SIZE) < 0) {
+        if (read(sock, message, BUF_SIZE) <= 0)
+        {
             // printf("No message.\r\n");
+
+            //// 첫 실행 시에는 무조건 read()값 있어야 함
+            // 못 받을 경우 받아 줌
+            if (is_init)
+            {
+                moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
+
+                char listget[BUF_SIZE] = {0,};
+                sprintf(listget, "%d", HEARTBEAT_REQ_CODE);
+                write(sock, listget, BUF_SIZE);
+            }
         }
 
         else
         {
             char cmd_code[5] = {0,};
             memcpy(&cmd_code, &message, sizeof(int));
-
             cmdcode = atoi(cmd_code);
+
+            //// Re-retrieve message
+            while (1)
+            {
+                if (is_init && cmdcode == HEARTBEAT_STR_CODE) break;
+                else if (message[0]) break;
+
+                read(sock, message, BUF_SIZE);
+
+                memcpy(&cmd_code, &message, sizeof(int));
+                cmdcode = atoi(cmd_code);
+            }
+
+            // printf("is_init: %d  cmdcode: %d  ", is_init, cmdcode);fflush(0);sleep(1);
 
             switch (cmdcode)
             {
@@ -1097,6 +1159,8 @@ int main(int argc, char *argv[])
                 case HEARTBEAT_STR_CODE:
                 {
                     clientListProcess(message);
+
+                    if (is_init) { printf("\r\n\n"); is_init = 0; }
 
                     // target이 연결 해제되었을 때
                     // 즉 로컬상 CHAT_TARGET은 > -1인데 수신받은 client_data[]에서의 자기 target은 == -1일때
@@ -1115,7 +1179,6 @@ int main(int argc, char *argv[])
                     // 처음 가입 시 1째로 수행
                     else if (CHAT_TARGET == -1)
                     {
-                        if (is_init) { printf("\r\n\n"); is_init = 0; }
                         moveCursorUp(1, 1, 0);
                         print_available_clients(0);
                         prompt_printed = 0;
@@ -1131,7 +1194,7 @@ int main(int argc, char *argv[])
                     struct HeartBeatPacket hbp;
                     hbp.cmd_code = HEARTBEAT_CMD_CODE;
                     hbp.member_srl = MEMBER_SRL;
-                    hbp.CHAT_STATUS = CHAT_STATUS;
+                    hbp.chat_status = CHAT_STATUS;
                     hbp.target = CHAT_TARGET;
                     hbp.is_chatting = isKeyboardWriting();
 
@@ -1295,9 +1358,18 @@ int main(int argc, char *argv[])
                 }
 
                 //// FAILED TO IDENTIFY CMDCODE ////
+                //// UNDEFINED CMDCODE FROM SERVER ////
                 default:
                 {
-                    printf("\033[1;31mError\033[37m reading cmdcode [%d] from server!\033[0m\r\n", cmdcode);
+                    printf("\033[1;31mUndefined\033[37m cmdcode from server: %d\033[0m\r\n", cmdcode);
+                    // sleep(1);
+
+                    // erase "undefined" from stdout
+                    // refine stdout
+                    if (is_init)    moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + 1, 1, 0);
+                    else            moveCursorUp(1, 1, 0);
+                    // printf("imbroken ");
+                    // sleep(1);
 
                     break;
                 }
@@ -1633,7 +1705,7 @@ int main(int argc, char *argv[])
                                     break; // continue;
                                 }
 
-                                if (client_data[req_to].CHAT_STATUS > 0)
+                                if (client_data[req_to].chat_status > 0)
                                 {
                                     moveCursorUp(2, 0, 0);
                                     printf("\033[1;33m해당 유저는 채팅중입니다\033[0m\r\n> ");
