@@ -334,7 +334,7 @@ void check_append_emojis(char *msg, char *mdest)
 
     // CAST TO INT FOR MEMORY LOCATION INDICATION
     // GET THE SIZE VALUE INBETWEEN
-    unsigned int inbet;
+    unsigned long int inbet;
 
     // message and mdest ROLE SWAP
     int swap = 0;
@@ -394,14 +394,12 @@ void check_append_emojis(char *msg, char *mdest)
             // ㄴ은 니은이다
             printf("\r\n==============================================\r\n------------------------------------------\r\n%s\r\n\nㄴ==> Before swap", message);
 
-            // 이거 약간 불법 비슷하게 볼 수도 있겠다
-            // 일단 배열 자체를 int 치환하기 때문이다
-            // 으 하
+            // message와 mdest 간 자리 교체 여부
             if (swap)
             {
                 // sub 문자열과 원본 문자열 메모리 위치의 차를 이용해
                 // 배열 index로 사용할 수 있는 시작 position을 구한다
-                inbet = (int)index - (int)mdest;
+                inbet = (long int)index - (long int)mdest;
 
                 // 일단 복사한다
                 memcpy(message, mdest, inbet);
@@ -425,7 +423,7 @@ void check_append_emojis(char *msg, char *mdest)
             // 위와 같음, message와 mdest 자리 바뀜
             else
             {
-                inbet = (int)index - (int)message;
+                inbet = (long int)index - (long int)message;
 
                 memcpy(mdest, message, inbet);
                 memset(&mdest[inbet], 0, sizeof(&mdest[inbet]));

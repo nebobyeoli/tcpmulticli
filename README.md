@@ -7,9 +7,11 @@
 char mulcast_addr[] = "239.0.100.1";
 ```
 
+<!--
 <sub>문서 작업은 고단한 일입니다!</sub>
 
 <sup><sup>제가 확실히 알지 못하는 코드 주석은 <sub>거의</sub> 작성하지 않습니다!</sup></sup>
+-->
 
 ## Sources
 
@@ -752,4 +754,4 @@ Command   | Description | Appearance
   ```
 </details>
 
-<sup><sub>아 참고로 주석은 제가 떠드는 공간인 거 아시죠??</sub></sup>
+<!-- <sup><sub>아 참고로 주석은 제가 떠드는 공간인 거 아시죠??</sub></sup> -->
