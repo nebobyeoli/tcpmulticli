@@ -879,14 +879,14 @@ int main(int argc, char *argv[])
     memset(&mul_addr, 0, sizeof(mul_addr));
     mul_addr.sin_family = AF_INET;
     mul_addr.sin_addr.s_addr = htonl(INADDR_ANY);
-    mul_addr.sin_port = htons(9000);
+    mul_addr.sin_port = htons(atoi(argv[1]));
 
     join_addr.imr_multiaddr.s_addr = inet_addr(TEAM_MULCAST_ADDR);
     join_addr.imr_interface.s_addr = htonl(INADDR_ANY);
     setsockopt(udp_sock, IPPROTO_IP, IP_ADD_MEMBERSHIP, (void*)&join_addr, sizeof(join_addr));
 
     state = bind(udp_sock, (struct sockaddr *)&mul_addr, sizeof(mul_addr));
-    if (state == -1) perror_exit("UDP bind() error");
+    if (state == -1) perror_exit("UDP bind() error: Is another client already open in this PC?\r\n");
 
     printf("\n\033[1;4;33mCONNECTED TO \033[36mUDP\033[33m MULTICAST.\033[0m\n\n");
 
@@ -1297,7 +1297,7 @@ int main(int argc, char *argv[])
                 //// FAILED TO IDENTIFY CMDCODE ////
                 default:
                 {
-                    printf("\033[1;31mError\033[37m reading cmdcode [%d] from server!\033[0m\r\n", cmdcode);
+                    printf("\033[1;31mUndefined\033[37m cmdcode from server: %d\033[0m\r\n", cmdcode);
 
                     break;
                 }

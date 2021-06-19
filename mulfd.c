@@ -1000,12 +1000,6 @@ int main(int argc, char **argv)
         exit(1);
     }
 
-    for (int i = 0; i < MAX_SOCKS; i++)
-    {
-        memset(client_data[i].nick, 0, sizeof(client_data[i].nick));
-        client_data[i].target = -1;
-    }
-
     // https://stackoverflow.com/a/34550798
     DIR *dirp = opendir("./emojis");
     static struct dirent *dir;
@@ -1091,9 +1085,14 @@ int main(int argc, char **argv)
     state = listen(serv_sock, 5);
     if (state == -1) perror_exit("TCP listen() error!\n");
 
-    clnt_sock = serv_sock;
-
     ////// INITIALIZE //////
+
+    // client_data 초기화
+    for (int i = 0; i < MAX_SOCKS; i++)
+    {
+        memset(client_data[i].nick, 0, sizeof(client_data[i].nick));
+        client_data[i].target = -1;
+    }
 
     /* 원본 iomux_select.c에서 clnt_cnt 조건 수정: 실제 개수로써 사용되도록.
      * 아래 클라이언트 반복문에서도 값 설정 때 i가 아닌 i + 1과 비교하고 대입하여 사용
@@ -1917,7 +1916,7 @@ int main(int argc, char **argv)
                         //// FAILED TO IDENTIFY CMDCODE ////
                         default:
                         {
-                            printf("\033[1;31mError\033[37m reading cmdcode [%d] from %d [%d]!\033[0m\r\n", cmdcode, i, client[i]);
+                            printf("\033[1;31mUndefined\033[37m cmdcode from %d [%d]: %d\033[0m\r\n", i, client[i], cmdcode);
 
                             break;
                         }
