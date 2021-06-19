@@ -375,7 +375,7 @@ void check_append_emojis(char *msg, char *mdest)
 
         // emoji.txt의 데이터 대입
         size_t newLen = fread(tmp_emoji, sizeof(char), LEN, fp);
-        if (ferror(fp) != 0) { fputs("Error reading file %s :(\r\n", cd); exit(1); }
+        if (ferror(fp) != 0) { printf("Error reading file %s :(\r\n", cd); exit(1); }
         else tmp_emoji[newLen] = 0;
 
         fclose(fp);
