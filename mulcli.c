@@ -203,6 +203,7 @@ void send_singlechat_request(int member_srl)
 
     sprintf(pass, "%d", SINGLECHAT_REQ_CODE);
     sprintf(&pass[CMDCODE_SIZE], "%d", member_srl);
+
     write(sock, pass, CMDCODE_SIZE * 2);
 }
 
@@ -213,6 +214,7 @@ void send_singlechat_response(int member_srl, int accepted)
     sprintf(pass, "%d", SINGLECHAT_RESP_CODE);
     sprintf(&pass[CMDCODE_SIZE], "%d", member_srl);
     sprintf(&pass[CMDCODE_SIZE * 2], "%d", accepted);
+
     write(sock, pass, CMDCODE_SIZE * 3);
 }
 
@@ -493,6 +495,8 @@ list_node_t* transfer_list_data(char *buf, list_t *list, int emptylist)
     list_iterator_t *it = list_iterator_new(list, LIST_HEAD);
 
     int offset = 0;
+
+    memset(buf, 0, BUF_SIZE);
 
     // 각 노드에 단일 char가 저장되어 있는 list의 입력 데이터를
     // buf 배열에 저장!
@@ -890,8 +894,8 @@ int main(int argc, char *argv[])
 
     printf("\n\033[1;4;33mCONNECTED TO \033[36mUDP\033[33m MULTICAST.\033[0m\n\n");
 
-    // 모든 입력 무시
-    set_conio_terminal_mode();
+    // // 모든 입력 무시
+    // set_conio_terminal_mode();
 
     memset(&buf, 0, sizeof(buf));
     int _serv_port = 0;
@@ -908,7 +912,7 @@ int main(int argc, char *argv[])
         exit(1);
     }
 
-    if (kbhit()) getch();
+    // if (kbhit()) getch();
 
     int t_offset = 0;
 
@@ -925,8 +929,8 @@ int main(int argc, char *argv[])
     printf("\033[1;35m<<\033[37m PORT      : %d\033[0m\r\n", _serv_port);
     fflush(0);
 
-    // 입력 모드 재개
-    reset_terminal_mode();
+    // // 입력 모드 재개
+    // reset_terminal_mode();
 
     //// TCP 소켓, 연결 설정
 
@@ -985,6 +989,7 @@ int main(int argc, char *argv[])
 
         else
         {
+            memset(message, 0, SETNAME_CMD_CODE);
             sprintf(message, "%d", SETNAME_CMD_CODE);
             sprintf(&message[CMDCODE_SIZE], "%s", buf);
 
@@ -1295,6 +1300,7 @@ int main(int argc, char *argv[])
                 }
 
                 //// FAILED TO IDENTIFY CMDCODE ////
+                //// UNDEFINED CMDCODE FROM SERVER ////
                 default:
                 {
                     printf("\033[1;31mUndefined\033[37m cmdcode from server: %d\033[0m\r\n", cmdcode);

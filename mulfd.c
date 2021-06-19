@@ -195,6 +195,7 @@ void send_singlechat_request(int from, int to_sock)
 
     sprintf(pass, "%d", SINGLECHAT_REQ_CODE);
     sprintf(&pass[CMDCODE_SIZE], "%d", from);
+
     write(to_sock, pass, CMDCODE_SIZE * 2);
 }
 
@@ -205,6 +206,7 @@ void send_singlechat_response(int from, int to_sock, int accepted)
     sprintf(pass, "%d", SINGLECHAT_RESP_CODE);
     sprintf(&pass[CMDCODE_SIZE], "%d", from);
     sprintf(&pass[CMDCODE_SIZE * 2], "%d", accepted);
+
     write(to_sock, pass, CMDCODE_SIZE * 3);
 }
 
@@ -398,16 +400,13 @@ void check_append_emojis(char *msg, char *mdest)
 
                 // 원본 배열 내, 아까 메모리 위치 차로 구한 position index 부터 실제 emoji를 삽입하고
                 // 그 뒤에 :emoji: 뒤의 나머지 문자열을 추가 삽입한다
-                // 배열 크기들을 잘 보고 조심만 하면 sprintf와 strcat가 은어를 감탄사로 사용하게 할 만큼 정말 편하다
-                // 역시 스트링
                 // 나머지 문자열 추가 삽입은 :emoji:의 크기, 즉 strlen(TOKEN)을 이용해
-                // 나머지 문자열의 시작 위치를 구해서 사용하면
-                // 된다
+                // 나머지 문자열의 시작 위치를 구해서 사용하면 된다
+                memset(&message[inbet], 0, sizeof(&message[inbet]));
                 sprintf(&message[inbet], "\r\n%s\r\n%s", tmp_emoji, &mdest[inbet + strlen(TOKEN)]);
 
                 // 이제 다음 이모티콘 삽입에서의 역할 교환을 위해
                 // 원본 배열에 emoji 삽입된 배열을 복사해 준다
-                // 굳!
                 memcpy(mdest, message, MSG_SIZE);
 
                 printf("\r\n------------------------------------------\r\n%s\r\n\nㄴ==> After swap\r\n------------------------------------------\r\ni = %d, swapped %s\r\n==============================================\r\n", message, i, TOKEN);
@@ -415,13 +414,13 @@ void check_append_emojis(char *msg, char *mdest)
                 swap = 0;
             }
 
-            // 위와 똑같은 내용이다 다만
-            // message와 mdest의 자리가 서로 바뀌었을 뿐이다
+            // 위와 같음, message와 mdest 자리 바뀜
             else
             {
                 inbet = (int)index - (int)message;
 
                 memcpy(mdest, message, inbet);
+                memset(&mdest[inbet], 0, sizeof(&mdest[inbet]));
                 sprintf(&mdest[inbet], "\r\n%s\r\n%s", tmp_emoji, &message[inbet + strlen(TOKEN)]);
                 memcpy(message, mdest, MSG_SIZE);
 
@@ -457,6 +456,7 @@ void check_append_Func(char *msg, char *mdest,int clnt_cnt)
         memset(&index[remaining_len], 0, remaining_len + 1);
 
         randnum = rand() % 100 + 1; // 0~99
+        memset(getNum, 0, sizeof(getNum));
         itoa(randnum, getNum);
 
         strcpy(message, dice_message[(randnum-1) / 10]);
@@ -679,6 +679,8 @@ list_node_t* transfer_list_data(char *buf, list_t *list, int emptylist)
     list_iterator_t *it = list_iterator_new(list, LIST_HEAD);
 
     int offset = 0;
+
+    memset(buf, 0, BUF_SIZE);
 
     // 각 노드에 단일 char가 저장되어 있는 list의 입력 데이터를
     // buf 배열에 저장!
@@ -942,29 +944,41 @@ void clientListSerialize(char *message)
 
     for(int i = 0; i < MAX_SOCKS; i++)
     {
+        // cmdcode: HEARTBEAT_STR_CODE
+        memset(tmp, 0, sizeof(tmp));
         itoa(HEARTBEAT_STR_CODE, tmp);
         memcpy(&result[offset], &tmp, sizeof(int));
         offset += sizeof(int);
 
-        itoa(i, tmp); // member_srl
+        // member_srl: i
+        memset(tmp, 0, sizeof(tmp));
+        itoa(i, tmp);
         memcpy(&result[offset], &tmp, sizeof(int));
         offset += sizeof(int);
 
+        // nickname
         memcpy(&result[offset], &client_data[i].nick, sizeof(client_data[i].nick));
         offset += sizeof(client_data[i].nick);
 
+        memset(tmp, 0, sizeof(tmp));
         itoa(client_data[i].logon_status, tmp);
         memcpy(&result[offset], &tmp, sizeof(int));
         offset += sizeof(int);
 
+        // chat_status
+        memset(tmp, 0, sizeof(tmp));
         itoa(client_data[i].chat_status, tmp);
         memcpy(&result[offset], &tmp, sizeof(int));
         offset += sizeof(int);
 
+        // target
+        memset(tmp, 0, sizeof(tmp));
         itoa(client_data[i].target, tmp);
         memcpy(&result[offset], &tmp, sizeof(int));
         offset += sizeof(int);
 
+        // is_chatting
+        memset(tmp, 0, sizeof(tmp));
         itoa(client_data[i].is_chatting, tmp);
         memcpy(&result[offset], &tmp, sizeof(int));
         offset += sizeof(int);
@@ -1771,6 +1785,7 @@ int main(int argc, char **argv)
                             // 해당 클라이언트 연결이 없거나 이름 설정 안 되어 있음
                             if (client[req_to] == -1 || names[req_to][0] <= 0)
                             {
+                                printf("%d\r\n", client[req_to]);
                                 printf("\033[1;32m%d is not an existing client.\033[0m\r\n", req_to);
                                 send_singlechat_response(serv_sock, client[i], 0);
                             }
@@ -1915,11 +1930,10 @@ int main(int argc, char **argv)
                         }
 
                         //// FAILED TO IDENTIFY CMDCODE ////
+                        //// UNDEFINED CMDCODE FROM CLIENT ////
                         default:
                         {
                             printf("\033[1;31mUndefined\033[37m cmdcode from %d [%d]: %d\033[0m\r\n", i, client[i], cmdcode);
-                            printf("%s\r\n", &buf[4]);
-                            sleep(3);
 
                             break;
                         }
