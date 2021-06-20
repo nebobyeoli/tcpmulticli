@@ -20,12 +20,20 @@ char TEAM_MULCAST_ADDR[] = "239.0.100.1";
 이름 | 직무 | 기록
 ---- | ---- | ----
 양희수 | ![메인개발자](https://img.shields.io/badge/개발-메인개발자-blueviolet) ![author](https://img.shields.io/badge/관리자-author-ff5ecc) | ![완료보고서](https://img.shields.io/badge/문서-완료보고서-ff0048)
-김영상 | ![메인개발자](https://img.shields.io/badge/개발-메인개발자-blueviolet) | ![요구사항명세서](https://img.shields.io/badge/문서-요구사항명세서-ff4000) ![기능정의서](https://img.shields.io/badge/문서-기능정의서-00bf36) ![설계서](https://img.shields.io/badge/문서-설계서-00cccc)
+김영상 | ![메인개발자](https://img.shields.io/badge/개발-메인개발자-blueviolet) ![문서 총괄](https://img.shields.io/badge/관리자-문서%20총괄-ff5ecc) | ![요구사항명세서](https://img.shields.io/badge/문서-요구사항명세서-ff4000) ![기능정의서](https://img.shields.io/badge/문서-기능정의서-00bf36) ![설계서](https://img.shields.io/badge/문서-설계서-00cccc)
 김창진 | ![서브개발자](https://img.shields.io/badge/개발-서브개발자-576aff) | ![설계서](https://img.shields.io/badge/문서-설계서-00cccc) ![notion](https://img.shields.io/badge/한눈에보기-notion-ff82b2)
 김진우 | ![보조개발자](https://img.shields.io/badge/개발-보조개발자-8aa9ff) | ![시험명세서](https://img.shields.io/badge/문서-시험명세서-ccb25c)
 이연호 | ![보조개발자](https://img.shields.io/badge/개발-보조개발자-8aa9ff) | ![시험명세서](https://img.shields.io/badge/문서-시험명세서-ccb25c)
 정성원 | ![none](https://img.shields.io/badge/-none-b1b1b1) |
 이용우 | ![none](https://img.shields.io/badge/-none-b1b1b1) |
+
+직무 | 구현 항목
+---- | --------
+![메인개발자](https://img.shields.io/badge/개발-메인개발자-blueviolet) ![author](https://img.shields.io/badge/관리자-author-ff5ecc) | 입출력 체계화, UDP 송신, TCP 개인/오픈 채팅 및 서버 메시지, 이모티콘 사용, 색상 정리
+![메인개발자](https://img.shields.io/badge/개발-메인개발자-blueviolet) ![문서 총괄](https://img.shields.io/badge/관리자-문서%20총괄-ff5ecc) | `HEARTBEAT` 체계화, `memberlist` 송수신 및 체계화, UDP 수신 및 TCP 가입
+![서브개발자](https://img.shields.io/badge/개발-서브개발자-576aff) | `HEARTBEAT` 주기화, 메인 화면, 주사위, 제비뽑기
+![보조개발자](https://img.shields.io/badge/개발-보조개발자-8aa9ff) | `HEARTBEAT` 주기화
+
 
 <!--
 <sub>문서 작업은 고단한 일입니다!</sub>
@@ -53,14 +61,14 @@ gcc -o mulcli mulcli.c list/list.c list/list_node.c list/list_iterator.c
 ./mulcli <PORT>
 ```
 
-## Branches
+## Main branches
 
 Branch name | Pull request | Description
 ----------- | ------------ | -----------
 **clistat** | [Manage Client Status](https://github.com/nebobyeoli/tcpmulticli/pull/2) | Server/Client 필요 기능 조건
 **emojis**  | [Emoji support](https://github.com/nebobyeoli/tcpmulticli/pull/1) | 텍스트 이미지 이모티콘 및 긴 `mms` 송수신에 관하여
 **keyinput**  | [Keyboard input by character](https://github.com/nebobyeoli/tcpmulticli/pull/4) | `termios`를 이용한 사용자 정의 `kbhit()` 및 `getch()` 활성화 <br> 글자를 하나씩 입력받아 직접 할당하는 방식으로의 입력 구현 <br> 즉 `엔터` 없이도, 입력 `중의` 입력 버퍼를 직접 관리할 수 있도록 하는 작업
-**singles**  | [1 : 1 채팅 기반 구현](https://github.com/nebobyeoli/tcpmulticli/pull/11) | 개인 채팅 구현
+**singles**  | [1 : 1 채팅 기반 구현](https://github.com/nebobyeoli/tcpmulticli/pull/11) | 개인 채팅 기반 구현
 
 # 외부 작동
 
@@ -155,6 +163,10 @@ Input message(CTRL+C to quit CHAT):
 </details>
 
 ### 채팅 상대와 입력 모드 전환
+
+#### [내부 작동](https://github.com/nebobyeoli/tcpmulticli/#개인-채팅)
+
+#### 사용법
 
 처음 접속한 후에는 `광장`이라는 이름의 오픈 채팅방에서 채팅이 시작된다.
 
@@ -314,8 +326,8 @@ HEARTBEAT! MS:1, CS:0, TG:-1, CT:0
 
 ### 색상 구분
 
-굵은 색 | 출력 내용
------- | ------
+굵은 색 | 출력 종류
+------- | ---------
 노랑 | 서버 시작/종료, 새로운 TCP 접속/접속 해제, TCP 수신 메시지 발생, 개인 채팅 신청 발생
 초록 | 클라이언트 이름 설정, 개인 채팅 클라이언트 존재 여부
 파랑 | `>>` 주기적 송신물
@@ -339,7 +351,7 @@ Cmd code | Constant                | Meaning
   2000   | `SETNAME_CMD_CODE`      | 클라이언트 닉네임 설정
 **3000** | `OPENCHAT_CMD_CODE`     | **Messaging - Open chat `오픈채팅`**
 **3001** | `SINGLECHAT_CMD_CODE`   | **Messaging - Single chat `개인채팅`**
-  4000   | `SERVCLOSED_CMD_CODE`   | 서버가 종료됨
+  4000   | `SERVCLOSED_CMD_CODE`   | 서버가 종료되었음을 알림
 
 ## Message format
 
@@ -417,7 +429,109 @@ Name              | `cmd_code`      | `logon_status`  | `nick`        | `chat_st
 
 # 내부 작동
 
+## 글자 하나씩 입력받기
 
+기존의 배열 버퍼를 이용한 입력 사용은 메시지 수신으로 인한 `stdout`에서의 출력물 발생 시, 입력하던 내용이 입력 버퍼에 그대로 남아 있음에도 새로운 출력물로 인해 화면상에서 고정 출력으로 넘어가 더 이상의 수정 과정을 확인하지 못하는 문제가 있었다.
+
+입력하던 내용의 재출력을 위해 아직 `ENTER`로 넘어가지 않은 입력 버퍼에 대한 접근 방법을 찾던 중, 리눅스에서의 터미널 입력 모드 전환을 이용한 `kbhit()` 및 `getch()`의 구현법을 알게 되었다. 이를 이용해, 글자를 하나씩 입력받아 각 값을 직접 저장해 주는 방식으로 입력 버퍼를 직접 관리하는 방법을 구현해 보게 되었다.
+
+구현이 완료된 항목들은 다음과 같다.
+
+- 출력 가능한 키 입력 발생 시 해당 문자를 이중 연결 리스트에 저장
+- `좌/우 방향키` 및 `CTRL + 좌/우 방향키`를 이용해 한 글자 단위로 커서를 이동할 수 있음
+- `BACKSPACE` 및 `DELETE`를 이용해 한 글자 단위로 입력 버퍼를 지울 수 있음
+- `CTRL + BACKSPACE` 및 `CTRL + DELETE`를 이용해 한 블럭 단위로 입력 버퍼를 지울 수 있음
+- `ALT + ENTER` 및 `BACKSPACE`와 `DELETE`를 이용해 입력 버퍼에 줄넘김을 삽입하고 삭제할 수 있음 (화면상 출력 버그가 발생하기는 하지만, 버퍼 리스트로 입력되는 내용은 온전함)
+
+아래는 각 단계에서 Pull request를 통해 정리한 내용들을 한 바닥으로 합친 것이다.
+
+### [1단계 구현 내용 기록](https://github.com/nebobyeoli/tcpmulticli/pull/4)
+
+- [x] 글자를 하나씩 입력받도록 할 수 있는 '전제적 기반' 구현 완료
+
+#### 구현 효과에 대한 예상
+
+- **입력 버퍼에 직접 접근 가능**
+- 키보드 입력 도중에 기타 키에 대한 `getch()`를 쓸 수 있음, `user가 입력 중입니다...`와 같은 입력 레코딩이 가능해질 수 있음
+- **방향키 사용 가능**
+- 복사한 내용을 붙여넣는다거나 한글 입력을 구현하려 할 때 매우 곤란해질 수도 있음
+- 그러나 [codepoint to unicode 변환 함수](https://stackoverflow.com/a/38492214)를 참고해 유용히 구현해 내는 것이 가능할 수도 있음
+- **매우 신기함!**
+
+#### 관련해서 알게 된 것들
+
+일반 입력키 외의 특수키들은 입력 발생 시 한 번에 여러 개의 정수값이 입력된다.<br>
+즉 n번의 `getch()` 입력을 거쳐, 아래와 같은 값들을 반환한다.
+
+Key     | `getch()` value(s)
+------- | --------------------------------------------------------
+`ESC`   | `27`
+`UP`    | `27` `91`<sup>[</sup> `65`<sup>A</sup>
+`DOWN`  | `27` `91`<sup>[</sup> `66`<sup>B</sup>
+`RIGHT` | `27` `91`<sup>[</sup> `67`<sup>C</sup>
+`LEFT`  | `27` `91`<sup>[</sup> `68`<sup>D</sup>
+`DEL`   | `27` `91`<sup>[</sup> `51`<sup>3</sup> `126`<sup>~</sup>
+
+### [2단계 구현 내용 기록](https://github.com/nebobyeoli/tcpmulticli/pull/5)
+
+- [x] 수신 메시지 출력 후 입력 중 버퍼 재출력
+- [x] 콘솔 창에서의 `엔터 키` 출력 이후에 대한 `BACKSPACE BEHAVIOR`
+- [x] [이중 연결 리스트 사용](https://github.com/clibs/list)으로의 저장 방식 전환 구현
+
+### [3단계 구현 내용 기록](https://github.com/nebobyeoli/tcpmulticli/pull/6)
+
+- [x] `방향 키`로의 `커서 이동` 후 해당 위치에서의 문자 삽입에 대한 입력 버퍼 및 화면 출력값 동시 갱신
+- [x] `BACKSPACE`, `DELETE` 키에 대한 작동 추가
+- [x] `CTRL + 방향키` <sup>`LEFT`, `RIGHT` </sup>에 대한 작동 추가
+- [x] `CTRL + ERASE` <sup>`BACKSPACE`, `DELETE` </sup>키에 대한 작동 추가
+
+### [4단계 구현 내용 기록](https://github.com/nebobyeoli/tcpmulticli/pull/7)
+
+#### 추가 구현
+
+- [x] `공백`, `줄넘김`으로만 된 메시지는 `엔터` 날렸을 때 무시되도록
+- [x] 출력물 출력 후에도, 화면에 표시된 사용자 입력물 유지
+
+#### 해결한 버그
+
+- [x] `줄넘김` 들어간 줄에 삽입할 때 `글자` 말고 `줄` 형식으로 `(같은 커서 위치에서 지속적으로)` 출력되도록
+- [x] `세로로` 긴 <sup>엔터 많은</sup> 문자열 넘겼을 때도 최소 입력한 만큼은 커서 위로 올라가도록
+- [x] 커서 뒤에 입력 데이터 존재하는 상황에서, 줄의 맨 끝에서 `ALT + ENTER` 넣었을 때 `줄넘김` 안 들어가는 현상
+- [x] 줄넘김 앞, 줄의 끝에서 문자열 넣었을 때 `stdout`에 한 글자씩 출력되는 현상
+- [x] `줄넘김` 앞에서 `오른쪽 화살표` 눌렀을 때 다음 줄로 커서 이동
+
+### [5단계 구현 내용 기록](https://github.com/nebobyeoli/tcpmulticli/pull/9)
+
+#### 키보드 입력
+
+- [x] 클라이언트 코드에도 추가 구현된 입력 기법 적용
+- [x] `ERASEKEY`와 `ALT + ENTER`의 연쇄 실행 시, 화면 출력 모양에서 가장 윗 줄이 그 다음 줄로 복사되어 전체 버퍼가 늘어나는 버그 발견
+
+#### 기타
+
+- [x] 타이핑 중의 여부를 함수로 작성
+- [x] 닉네임이 설정된 직후의 클라이언트에게, 서버에서 그에게 할당된 `MEMBER_SRL`값을 송신해 주도록 구현
+
+## 개인 채팅
+
+개인 채팅에서는 위에서 설명된 [외부 작동](https://github.com/nebobyeoli/tcpmulticli/#채팅-상대와-입력-모드-전환)과 같이 원하는 상대에게 개인 채팅을 신청하고 이를 수락/거절할 수 있으며, 아래에 작성된 구현 완료 후 오픈 채팅과의 작동 결합으로 개인 채팅 상대 전환과 함께, 개인 채팅에서 오픈 채팅으로 되돌아 갈 수도 있도록 하는 구현을 완료하였다.
+
+### [개인 채팅 구현 과정 기록](https://github.com/nebobyeoli/tcpmulticli/pull/11)
+
+#### 개인 채팅 요청 및 수락/거절 과정
+
+1. 개인 채팅을 하고자 하는 클라이언트 번호 (`target`) 입력
+2. 해당 `target`이 존재하는지 서버에 확인 요청 및 응답 수신
+3. 해당 `target`이 존재하면 서버가 `target` 클라이언트에게 개인채팅 요청 전달
+4. 개인채팅 요청에 대한 답변을 서버가 원래 클라이언트에게 전달
+5. 개인채팅 요청 수락 시, 성립된 클라이언트 관계를 `client_data[]`에 갱신한 후 모든 클라이언트에게 `memberlist`로 전달
+
+#### 해결한 버그
+
+- [x] 지속적으로 송신되는 `HEARTBEAT`에 의해 클라이언트에서 메시지 수신이 방해받는 현상
+- [x] 서버가 개인 채팅 메시지 수신 후 메시지 수신자가 아닌 송신자로 다시 전송하던 현상
+- [x] 서버 메시지를 수신만 하고 제대로 출력하지 못하는 현상: 메시지 분리 `offset` 길이가 잘못 사용되었음
+- [x] 닉네임이 설정되지 않은 클라이언트에 개인 채팅을 요청할 수 없도록, 즉 '없는 클라이언트'처럼 취급하도록 구현함.
 
 # 부가기능
 
@@ -448,7 +562,7 @@ Name              | `cmd_code`      | `logon_status`  | `nick`        | `chat_st
 Usage     | File               | Appearance
 --------- | ------------------ | ----------
 **:myh:** | `./emojis/myh.txt` | ⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢠⣴⣾⣿⣶⣶⣆⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀<br>⢀⢀⢀⣀⢀⣤⢀⢀⡀⢀⣿⣿⣿⣿⣷⣿⣿⡇⢀⢀⢀⢀⣤⣀⢀⢀⢀⢀⢀<br>⢀⢀ ⣶⢻⣧⣿⣿⠇ ⢸⣿⣿⣿⣷⣿⣿⣿⣷⢀⢀⢀⣾⡟⣿⡷⢀⢀⢀⢀<br>⢀⢀⠈⠳⣿⣾⣿⣿⢀⠈⢿⣿⣿⣷⣿⣿⣿⣿⢀⢀⢀⣿⣿⣿⠇⢀⢀⢀⢀<br>⢀⢀⢀⢀⢿⣿⣿⣿⣤⡶⠺⣿⣿⣿⣷⣿⣿⣿⢄⣤⣼⣿⣿⡏⢀⢀⢀⢀⢀<br>⢀⢀⢀⢀⣼⣿⣿⣿⠟⢀⢀⠹⣿⣿⣿⣷⣿⣿⣎⠙⢿⣿⣿⣷⣤⣀⡀⢀⢀<br>⢀⢀⢀ ⢸⣿⣿⣿⡿⢀⢀⣤⣿⣿⣿⣷⣿⣿⣿⣄⠈⢿⣿⣿⣷⣿⣿⣷⡀⢀<br>⢀⢀⢀⣿⣿⣿⣿⣷⣀⣀⣠⣿⣿⣿⣿⣷⣿⣷⣿⣿⣷⣾⣿⣿⣿⣷⣿⣿⣿⣆<br>⣿⣿⠛⠋⠉⠉⢻⣿⣿⣿⣿⡇⡀⠘⣿⣿⣿⣷⣿⣿⣿⠛⠻⢿⣿⣿⣿⣿⣷⣦<br>⣿⣿⣧⡀⠿⠇⣰⣿⡟⠉⠉⢻⡆⠈⠟⠛⣿⣿⣿⣯⡉⢁⣀⣈⣉⣽⣿⣿⣿⣷<br>⡿⠛⠛⠒⠚⠛⠉⢻⡇⠘⠃⢸⡇⢀⣤⣾⠋⢉⠻⠏⢹⠁⢤⡀⢉⡟⠉⡙⠏⣹<br>⣿⣦⣶⣶⢀⣿⣿⣿⣷⣿⣿⣿⡇⢀⣀⣹⣶⣿⣷⠾⠿⠶⡀⠰⠾⢷⣾⣷⣶⣿<br>⣿⣿⣿⣿⣇⣿⣿⣿⣷⣿⣿⣿⣇⣰⣿⣿⣷⣿⣿⣷⣤⣴⣶⣶⣦⣼⣿⣿⣿⣷<br>`[\n]` |
-**:face:** | `./emojis/face.txt` | `[\n]`( ͡° ͜ʖ ͡°)( ͠° ͟ʖ ͡°)( ͡~ ͜ʖ ͡°)( ͡ʘ ͜ʖ ͡ʘ)( ͡o ͜ʖ ͡o)<br>`[\n]`
+**:face:** | `./emojis/face.txt` | `[\n]`<br>( ͡° ͜ʖ ͡°)( ͠° ͟ʖ ͡°)( ͡~ ͜ʖ ͡°)( ͡ʘ ͜ʖ ͡ʘ)( ͡o ͜ʖ ͡o)<br>`[\n]`
 <!-- **:bbird:** | `./emojis/bbird.txt` | x -->
 
 ## 주사위
