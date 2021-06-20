@@ -62,7 +62,7 @@ Branch name | Pull request | Description
 **keyinput**  | [Keyboard input by character](https://github.com/nebobyeoli/tcpmulticli/pull/4) | `termios`를 이용한 사용자 정의 `kbhit()` 및 `getch()` 활성화 <br> 글자를 하나씩 입력받아 직접 할당하는 방식으로의 입력 구현 <br> 즉 `엔터` 없이도, 입력 `중의` 입력 버퍼를 직접 관리할 수 있도록 하는 작업
 **singles**  | [1 : 1 채팅 기반 구현](https://github.com/nebobyeoli/tcpmulticli/pull/11) | 개인 채팅 구현
 
-# 작동
+# 외부 작동
 
 ## 서버
 
@@ -239,60 +239,195 @@ TOTAL NAMED CLIENTS: 3
 
 - 자기 자신은 굵은 초록색으로 표시된다.
 - 채팅이 가능한, 즉 `광장`에 나와 있는 클라이언트는 굵은 흰색으로 표시된다.
-- 다른 사람과 개인 채팅 중인 클라이언트는 연한 자주색으로 표시된다.
-- 자신과 개인 채팅 중인 클라이언트는 진한 자주색으로 표시된다.
+- 다른 사람과 개인 채팅 중인 클라이언트는 얇은 자주색으로 표시된다.
+- 자신과 개인 채팅 중인 클라이언트는 굵은 자주색으로 표시된다.
 
-채팅 상대 목록은 새 접속, 접속 해제 상황을 포함하여 클라이언트 상태에 변화가 발생할 때마다 `memberlist`로 수신받아 실시간으로 갱신된다. 또한 `Input message(CTRL+C to quit CHAT)` 또는 `Enter command(ESC to exit CMDMODE)`의 입력 문구 바로 위에 고정 출력되어 다른 사용자들의 채팅 상태들을 편리하게 확인할 수 있다.
+채팅 상대 목록은 새 접속, 접속 해제 상황을 포함하여 클라이언트 상태에 변화가 발생할 때마다 `memberlist`로 수신받아 실시간으로 갱신된다. 이는 `Input message(CTRL+C to quit CHAT)` 또는 `Enter command(ESC to exit CMDMODE)`의 입력 문구 바로 위에 고정 출력되어 다른 사용자들의 채팅 상태들을 편리하게 확인할 수 있다.
 
-## 서버 출력물에 대하여
+### 서버 메시지 수신
 
-### Server log info
+클라이언트에게 서버 메시지는 `============ [MESSAGE FROM SERVER] ============`의 형태로 출력된다.
 
-```c
-// Output example
-```
+- 사용자 접속 및 접속 해제와 같은 알림형 메시지는 굵은 노란색으로 표시된다.
+- 서버 사용자가 직접 입력하여 전달되는 메시지는 굵은 흰색으로 표시된다.
+- <details>
+  <summary>사용자 입력값 중 부가기능(이모티콘, 주사위 등)이 삽입된 메시지는 다음과 같이 출력된다.</summary><br>
+
+  서버에서의 입력값
+  ```sh
+  Input message(CTRL+C to quit CHAT):
+  Hello this is a :myh: server
+  ```
+  
+  클라이언트에서의 출력값
+  ```sh
+  ============ 
+  MESSAGE FROM SERVER:
+  Hello this is a 
+  ⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢠⣴⣾⣿⣶⣶⣆⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀
+  ⢀⢀⢀⣀⢀⣤⢀⢀⡀⢀⣿⣿⣿⣿⣷⣿⣿⡇⢀⢀⢀⢀⣤⣀⢀⢀⢀⢀⢀
+  ⢀⢀ ⣶⢻⣧⣿⣿⠇ ⢸⣿⣿⣿⣷⣿⣿⣿⣷⢀⢀⢀⣾⡟⣿⡷⢀⢀⢀⢀
+  ⢀⢀⠈⠳⣿⣾⣿⣿⢀⠈⢿⣿⣿⣷⣿⣿⣿⣿⢀⢀⢀⣿⣿⣿⠇⢀⢀⢀⢀
+  ⢀⢀⢀⢀⢿⣿⣿⣿⣤⡶⠺⣿⣿⣿⣷⣿⣿⣿⢄⣤⣼⣿⣿⡏⢀⢀⢀⢀⢀
+  ⢀⢀⢀⢀⣼⣿⣿⣿⠟⢀⢀⠹⣿⣿⣿⣷⣿⣿⣎⠙⢿⣿⣿⣷⣤⣀⡀⢀⢀
+  ⢀⢀⢀ ⢸⣿⣿⣿⡿⢀⢀⣤⣿⣿⣿⣷⣿⣿⣿⣄⠈⢿⣿⣿⣷⣿⣿⣷⡀⢀
+  ⢀⢀⢀⣿⣿⣿⣿⣷⣀⣀⣠⣿⣿⣿⣿⣷⣿⣷⣿⣿⣷⣾⣿⣿⣿⣷⣿⣿⣿⣆
+  ⣿⣿⠛⠋⠉⠉⢻⣿⣿⣿⣿⡇⡀⠘⣿⣿⣿⣷⣿⣿⣿⠛⠻⢿⣿⣿⣿⣿⣷⣦
+  ⣿⣿⣧⡀⠿⠇⣰⣿⡟⠉⠉⢻⡆⠈⠟⠛⣿⣿⣿⣯⡉⢁⣀⣈⣉⣽⣿⣿⣿⣷
+  ⡿⠛⠛⠒⠚⠛⠉⢻⡇⠘⠃⢸⡇⢀⣤⣾⠋⢉⠻⠏⢹⠁⢤⡀⢉⡟⠉⡙⠏⣹
+  ⣿⣦⣶⣶⢀⣿⣿⣿⣷⣿⣿⣿⡇⢀⣀⣹⣶⣿⣷⠾⠿⠶⡀⠰⠾⢷⣾⣷⣶⣿
+  ⣿⣿⣿⣿⣇⣿⣿⣿⣷⣿⣿⣿⣇⣰⣿⣿⣷⣿⣿⣷⣤⣴⣶⣶⣦⣼⣿⣿⣿⣷
+  
+   server
+   ============
+  ```
+  </details>
+
+## 서버 출력 로그
+
+### 공통 출력
+
+하트비트 및 멤버리스트 송수신 등의 시간 간격별 지속적 송수신은 아래와 같이 출력된다.
+
 ```sh
-Received from A [B] (C)
+Received from 1 [3] (AAA): 1501 
+<< MemberList Requested at [t: 90] from 1 [3] (AAA)
+>> MemberList Sent      at [t: 90] to   1 [3] (AAA)
 
-<< HEARTBEAT at [t: %ld] from A [B] (C)
+>> [UDP] SENT SERVER INFO [9000172.16.3.195] at [t: 91]
+
+>> [UDP] SENT SERVER INFO [9000172.16.3.195] at [t: 92]
+
+>> HEARTBEAT at [t: 93] to   1 [3] (AAA)
+<< HEARTBEAT at [t: 93] from 1 [3] (AAA)
+HEARTBEAT! MS:1, CS:0, TG:-1, CT:0
 ```
+
+이와 같은 주기적 출력에서 공통되는 각 항목별 의미 및 자료형은 다음과 같다.
+
 ```c
-// t:   Time since server launch        [LONG INT] (time(0) 반환형)
-// A:   Client INDEX                    [INT]
-// B:   Client SOCKET                   [INT]
-// C:   Client NAME                     [CHAR*]
+// [t: n]:  Time since server start (n sec)     [LONG INT] (time(0) 반환형)
+// 1     :  Client INDEX                        [INT]
+// [3]   :  Client SOCKET                       [INT]
+// (AAA) :  Client NAME                         [CHAR*]
 ```
 
-## Cmd code significations
+### 색상 구분
 
-#### 기본은 천의 자리 수와 백의 자리 수로 구분하는 것을 원칙으로 한다.
+굵은 색 | 출력 내용
+------ | ------
+노랑 | 서버 시작/종료, 새로운 TCP 접속/접속 해제, TCP 수신 메시지 발생, 개인 채팅 신청 발생
+초록 | 클라이언트 이름 설정, 개인 채팅 클라이언트 존재 여부
+파랑 | `>>` 주기적 송신물
+자주 | `<<` 주기적 수신물
+시안 | `[UDP]` 송신, `[TCP]` 송신 및 연결 발생
+
+## Cmd code 구분
+
+<!-- Command code significations -->
+
+기본은 천의 자리 수와 백의 자리 수로 구분하는 것을 원칙으로 한다.
 
 Cmd code | Constant                | Meaning
 -------- | ----------------------- | ---------------------
 **1000** | `SERVMSG_CMD_CODE`      | **Message from server `서버 메시지`**
 **1500** | `HEARTBEAT_CMD_CODE`    | **HEARTBEAT 송수신**
-**1501** | `HEARTBEAT_REQ_CODE`    | **Memberlist request`클라이언트 리스트 요청`**
-  1601   | `SINGLECHAT_REQ_CODE`   | 개인 채팅 요청
-  1602   | `SINGLECHAT_RESP_CODE`  | 개인 채팅 요청 응답
-  2000   | `SETNAME_CMD_CODE`      | Set client nickname `클라이언트 닉네임 설정`
-  3000   | `OPENCHAT_CMD_CODE`     | Messaging - Open chat `오픈채팅`
+**1501** | `HEARTBEAT_REQ_CODE`    | **Memberlist request `클라이언트 리스트 요청`**
+**1502** | `HEARTBEAT_STR_CODE`    | **Memberlist response `클라이언트 리스트 전송`**
+  1600   | `SINGLECHAT_REQ_CODE`   | 개인 채팅 요청
+  1601   | `SINGLECHAT_RESP_CODE`  | 개인 채팅 요청 응답
+  2000   | `SETNAME_CMD_CODE`      | 클라이언트 닉네임 설정
+**3000** | `OPENCHAT_CMD_CODE`     | **Messaging - Open chat `오픈채팅`**
 **3001** | `SINGLECHAT_CMD_CODE`   | **Messaging - Single chat `개인채팅`**
+  4000   | `SERVCLOSED_CMD_CODE`   | 서버가 종료됨
 
 ## Message format
 
+### 메시지 최대 크기
+
+현재로서는 MMS로의 분할 수신 미구현으로, 송수신 메시지의 총 크기의 최댓값을 매우 큰 값으로 설정하였다.
+
+Name              | _`[TOTAL OF ANY]`_
+----------------- | ------------------
+**Size constant** | `BUF_SIZE`
+**Size**          | `1024 * n`
+
+### 오픈채팅 & 서버 메시지 패킷
+
 Name              | `cmdcode`      | `sender`    | `msg`
 ----------------- | -------------- | ----------- | ----------
-**Size constant** | `CMDCODE_SIZE` | `NAME_SIZE` | `BUF_SIZE`
-**Size**          | `4`            | `30`        | `1024 * n`
+**Size constant** | `CMDCODE_SIZE` | `NAME_SIZE` | `MSG_SIZE`
+**Size**          | `4`            | `30`        | `1000 * n`
+
+### 개인채팅 패킷
+
+Name              | `cmdcode`      | `member_srl`  | `msg`
+----------------- | -------------- | ------------- | ----------
+**Size constant** | `CMDCODE_SIZE` | `sizeof(int)` | `MSG_SIZE`
+**Size**          | `4`            | `4`           | `1000 * n`
+
+### HEARTBEAT 패킷
+
+<details>
+  <summary><code>HeartBeatPacket</code> 구조체</summary><br>
+
+```c
+struct HeartBeatPacket
+{
+    int cmd_code;       // HEARTBEAT 전송 CMDCODE
+    int member_srl;     // 클라이언트 고유번호
+    int chat_status;    // 채팅 상대가 있는지 (idle = 0, personal_chat = 1, channel_chat = 2)
+    int target;         // 채팅 상대
+    int is_chatting;    // 타이핑 중인지
+};
+```
+</details>
+
+Name              | `cmd_code`      | `member_srl`  | `chat_status` | `target`      | `is_chatting`
+----------------- | --------------- | ------------- | ------------- | ------------- | -------------
+**Size constant** | `sizeof(int)`   | `sizeof(int)` | `sizeof(int)` | `sizeof(int)` | `sizeof(int)`
+**Size**          | `4`             | `4`           | `4`           | `4`           | `4`
+
+
+### 클라이언트 목록 `memberlist` 패킷
+
+<details>
+  <summary><code>sClient</code> 구조체</summary><br>
+
+```c
+struct sClient
+{
+    int logon_status;               // logon 되어있으면 1, 아니면 0
+    char nick[NAME_SIZE];
+    int chat_status;                // idle = 0, personal_chat = 1, channel_chat = 2
+    int target;                     // 타겟 번호. 개인채팅이면 타겟 member_srl, 단체면 channel
+    int is_chatting;                // 채팅 중인지
+    time_t last_heartbeat_time;     // 마지막 heartbeat을 받은 시간
+
+} client_data[MAX_SOCKS];           // member_srl은 client_data[i] 에서 i이다.
+```
+</details>
+
+`client_data[]`의 배열로 저장하고, 송수신 때 하나의 `message`로 순차적으로 연결하여 사용한다.
+
+Name              | `cmd_code`      | `logon_status`  | `nick`        | `chat_status` | `target`      | `is_chatting`
+----------------- | --------------- | --------------- | ------------- | ------------- | ------------- | -------------
+**Size constant** | `sizeof(int)`   | `sizeof(int)`   | `NAME_SIZE`   | `sizeof(int)` | `sizeof(int)` | `sizeof(int)`
+**Size**          | `4`             | `4`             | `30`          | `4`           | `4`           | `4`
+
+# 내부 작동
+
+
+
+# 부가기능
 
 ## Emoji support
 
 <!-- `temporarily. quadrupled the BUF_SIZE because of it`<br> -->
-`현재로서는 MMS로의 분할 수신 미구현으로 BUF_SIZE를 매우 큰 값으로 설정하였다.`
 
 ### 이모티콘 추가법
 
-<!-- ~~나는 능력자다~~ -->
+<!-- - 나는 능력자다 - -->
 
 - 서버 PC에서 `./mulfd`를 실행하기 전, 사용하고자 하는 이모티콘을 `./emojis/`에 `txt` 파일로 추가한다.
 - 이모티콘 `txt`파일은 하나의 개행 문자로 끝나도록 한다.
@@ -306,13 +441,12 @@ Name              | `cmdcode`      | `sender`    | `msg`
 
 - 서버 실행 도중에 이모티콘 파일을 지우면 파일 읽기 오류로 서버가 종료된다.
 - 서버 실행 도중에 이모티콘 파일 내용을 수정하면 해당 이모티콘의 다음 사용 때부터 수정된 이모티콘으로 사용된다.
-- **한 번에 너무 많은 이모티콘들을 보내지 않도록 한다. 아직 MMS 분할은 구현하지 않았다. Segmentation fault 같은 오류가 발생할 것이다.**
-<!-- - `서버를 터뜨리고 싶다면야 뭐` -->
+- **MMS 분할 미구현으로, 한 번에 너무 많은 이모티콘을 보내게 되면 최대 메시지 크기 초과로 Segmentation fault 등이 발생할 수 있다.**
 
-### Example
+### 사용 예시
 
-Usage   | File | Appearance
---------- | ----------- | ----------
+Usage     | File               | Appearance
+--------- | ------------------ | ----------
 **:myh:** | `./emojis/myh.txt` | ⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢠⣴⣾⣿⣶⣶⣆⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀<br>⢀⢀⢀⣀⢀⣤⢀⢀⡀⢀⣿⣿⣿⣿⣷⣿⣿⡇⢀⢀⢀⢀⣤⣀⢀⢀⢀⢀⢀<br>⢀⢀ ⣶⢻⣧⣿⣿⠇ ⢸⣿⣿⣿⣷⣿⣿⣿⣷⢀⢀⢀⣾⡟⣿⡷⢀⢀⢀⢀<br>⢀⢀⠈⠳⣿⣾⣿⣿⢀⠈⢿⣿⣿⣷⣿⣿⣿⣿⢀⢀⢀⣿⣿⣿⠇⢀⢀⢀⢀<br>⢀⢀⢀⢀⢿⣿⣿⣿⣤⡶⠺⣿⣿⣿⣷⣿⣿⣿⢄⣤⣼⣿⣿⡏⢀⢀⢀⢀⢀<br>⢀⢀⢀⢀⣼⣿⣿⣿⠟⢀⢀⠹⣿⣿⣿⣷⣿⣿⣎⠙⢿⣿⣿⣷⣤⣀⡀⢀⢀<br>⢀⢀⢀ ⢸⣿⣿⣿⡿⢀⢀⣤⣿⣿⣿⣷⣿⣿⣿⣄⠈⢿⣿⣿⣷⣿⣿⣷⡀⢀<br>⢀⢀⢀⣿⣿⣿⣿⣷⣀⣀⣠⣿⣿⣿⣿⣷⣿⣷⣿⣿⣷⣾⣿⣿⣿⣷⣿⣿⣿⣆<br>⣿⣿⠛⠋⠉⠉⢻⣿⣿⣿⣿⡇⡀⠘⣿⣿⣿⣷⣿⣿⣿⠛⠻⢿⣿⣿⣿⣿⣷⣦<br>⣿⣿⣧⡀⠿⠇⣰⣿⡟⠉⠉⢻⡆⠈⠟⠛⣿⣿⣿⣯⡉⢁⣀⣈⣉⣽⣿⣿⣿⣷<br>⡿⠛⠛⠒⠚⠛⠉⢻⡇⠘⠃⢸⡇⢀⣤⣾⠋⢉⠻⠏⢹⠁⢤⡀⢉⡟⠉⡙⠏⣹<br>⣿⣦⣶⣶⢀⣿⣿⣿⣷⣿⣿⣿⡇⢀⣀⣹⣶⣿⣷⠾⠿⠶⡀⠰⠾⢷⣾⣷⣶⣿<br>⣿⣿⣿⣿⣇⣿⣿⣿⣷⣿⣿⣿⣇⣰⣿⣿⣷⣿⣿⣷⣤⣴⣶⣶⣦⣼⣿⣿⣿⣷<br>`[\n]` |
 **:face:** | `./emojis/face.txt` | `[\n]`( ͡° ͜ʖ ͡°)( ͠° ͟ʖ ͡°)( ͡~ ͜ʖ ͡°)( ͡ʘ ͜ʖ ͡ʘ)( ͡o ͜ʖ ͡o)<br>`[\n]`
 <!-- **:bbird:** | `./emojis/bbird.txt` | x -->
