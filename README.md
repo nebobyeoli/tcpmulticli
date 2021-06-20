@@ -4,10 +4,14 @@
 
 ```c
 // 지정된 멀티캐스팅 주소
-char mulcast_addr[] = "239.0.100.1";
+char TEAM_MULCAST_ADDR[] = "239.0.100.1";
 ```
 
 <!-- 평소 당연하다고 여기는 출력 모양을 하나하나 직접 구현해 내는 게 가장 까다로우면서도 도전적이었던 것 같다. -->
+
+## 팀명
+
+베리비안의 해적
 
 ## 수행 구성원
 
@@ -45,8 +49,8 @@ gcc -o mulcli mulcli.c list/list.c list/list_node.c list/list_iterator.c
 ## Usage
 
 ```sh
-./mulfd  <PORT>
-./mulcli <IP> <PORT>
+./mulfd  <IP OF PC> <PORT>
+./mulcli <PORT>
 ```
 
 ## Branches
@@ -58,47 +62,70 @@ Branch name | Pull request | Description
 **keyinput**  | [Keyboard input by character](https://github.com/nebobyeoli/tcpmulticli/pull/4) | `termios`를 이용한 사용자 정의 `kbhit()` 및 `getch()` 활성화 <br> 글자를 하나씩 입력받아 직접 할당하는 방식으로의 입력 구현 <br> 즉 `엔터` 없이도, 입력 `중의` 입력 버퍼를 직접 관리할 수 있도록 하는 작업
 **singles**  | [1 : 1 채팅 기반 구현](https://github.com/nebobyeoli/tcpmulticli/pull/11) | 개인 채팅 구현
 
-<!-- Message is concatenated via `sprintf()`.
-
-Example:
-```c
-// CREATE MESSAGE FOR write()
-// + 1 AND + 2 BELOW INDICATES LEAVING OUT [NULL] CHARACTERS
-// AS SEPARATORS TO DISTINGUISH FORMAT PARAMETERS ON read()
-
-/* sprintf()를 이용해,
- * 한 개의 NULL 문자를 사이에 두고 char 배열에 작성하는 기법으로
- * 각 메시지 데이터를 구분지어 저장한다.
- */
-// APPEND CMDCODE
-sprintf(message, "%d", cmdcode);
-// APPEND NAME OF SENDER
-sprintf(&message[CMDCODE_SIZE + 1], "%s", sender);
-// APPEND MESSAGE
-sprintf(&message[CMDCODE_SIZE + NAME_SIZE + 2], "%s", msg);
-``` -->
-
-
 # 작동
 
 ## 서버
 
 ### MESSAGE FROM SERVER
 
-서버를 시작하면 <b>`STARTED TCP SERVER.`</b>의 문구와 함께 사용가능한 이모티콘 목록이 출력된다. 이때부터 서버는 메시지를 전송할 수 있으며, 서버 메시지는 닉네임(`name[]` 또는 `client_data[i].nick[]`)과 통신 상대(`client_data[i].target`)가 설정된 모든 클라이언트에게 전달된다.
+서버를 시작하면 <b>`STARTED TCP SERVER.`</b>의 문구와 함께 사용가능한 이모티콘 목록이 출력된다.
+
+이때부터 서버는 TCP 소켓으로 메시지를 입력받아 전송할 수 있으며, 서버 메시지는 채팅 상대가 누구인지에 관계없이 닉네임과 통신 상대가 설정된 모든 클라이언트에게 전달된다.
+
+서버는 1초에 한 번씩, UDP 멀티캐스트로 TCP 서버 소켓 가입 정보를 전송한다.
+
+클라이언트는 멀티캐스트 그룹에 가입하고, 수신받은 서버 IP와 PORT 번호를 이용해 TCP 소켓에 접속할 수 있다.
 
 ### HEARTBEAT
 
 서버는 닉네임이 설정된 클라이언트에 대해 일정 시간마다 클라이언트에 `HEARTBEAT`를 요청하고, 이에 응해 클라이언트가 전송한 `HEARTBEAT`를 출력한다. 이때 `HEARTBEAT`는 로그인 여부, 채팅중 여부, 누구랑 채팅중인지 등을 전송한다.
 
-### 클라이언트 통신
+`HEARTBEAT` 요청을 받은 클라이언트는 `HEARTBEAT` 전송과 동시에 `memberlist`(클라이언트 목록)을 서버에 요청하고 수신받는다.
 
-`[draft]` 클라이언트 초기 접속 시 다음과 같은 메인화면이 실행.
+TCP 소켓에서 클라이언트와의 연결이 끊어지면, 서버는 해당 클라이언트를 정리한 후 나머지 클라이언트들에게 `%s left the 광장.`이라는 문구를 전송한다.
 
-```c
+## 클라이언트 실행
+
+### 접속
+
+첫 실행 시 멀티캐스트 그룹에 가입하고 TCP 소켓 정보를 수신받는데 성공하면 아래와 같은 문구가 출력된다.
+
+```sh
+CONNECTED TO UDP MULTICAST.
+
+<< RECEIVED    INFO MESSAGE.
+<< SERVER IP : [IP OF PC]
+<< PORT      : [TCP PORT]
+
+CONNECTED TO TCP SERVER.
+
+
+NICKNAME: 
+
+```
+
+### 닉네임 조건
+
+- 닉네임은 공백 문자로 시작할 수 없다.
+- 닉네임은 `NAME_SIZE`(30) 글자보다 길 수 없다.
+- 모든 닉네임은 고유해야 한다. 이미 사용 중인 닉네임을 사용할 수 없다.
+
+조건을 만족시키는 닉네임을 입력하면 아래와 같은 메인화면과 함께 채팅을 시작할 수 있게 된다.
+
+## 클라이언트 통신
+
+### 메인 메뉴
+
+<details>
+  <summary><b>메인 메뉴 출력 형태</b></summary><br>
+
+```sh
+MEMBER_SRL: 2
 --------------------------------------------------------------
-==================== Welcome To The CHAT! ====================
+==================== Welcome To The 광장! ====================
 
+
+NICKNAME: BBB
 
 [Private chatting]
 
@@ -108,22 +135,123 @@ sprintf(&message[CMDCODE_SIZE + NAME_SIZE + 2], "%s", msg);
 ==============================================================
 --------------------------------------------------------------
 
-SRL 0 (AAA)
-SRL 1 (BBB)
+
+
+
+============ BBB joined the 광장! ============
+
+
+
+
+
+
+SRL 1 (AAA)
+SRL 2 (BBB)
 TOTAL NAMED CLIENTS: 2
+
+Input message(CTRL+C to quit CHAT):
+
+```
+</details>
+
+### 채팅 상대와 입력 모드 전환
+
+처음 접속한 후에는 `광장`이라는 이름의 오픈 채팅방에서 채팅이 시작된다.
+
+여기서 전송되는 메시지는 `광장`에 나와 있는 모든 클라이언트에게 수신된다.
+
+`ESC`를 눌러 `CMDMODE`와 `메시지 모드`를 전환할 수 있으며,<br>
+`CMDMODE`에서 `SRL %d`로 표시된 클라이언트 고유번호를 입력해 그 클라이언트와의 개인채팅을 신청할 수 있다.
+
+이때 자기 자신과, 이미 개인채팅 상대가 있는 클라이언트는 선택할 수 없고,<br>
+개인채팅 도중에 채팅 상대가 없는 다른 클라이언트와의 개인채팅을 신청할 수 있으며,<br>
+개인채팅 도중에 `CMDMODE`에 `0`을 입력하면 다시 `광장`으로 나갈 수 있다.
+
+<details>
+  <summary><b>개인 채팅 및 <code>광장</code>으로의 복귀 과정의 출력 형태</b></summary><br>
+
+```sh
+1 (AAA) is an existing client. Waiting for response...
+1 (AAA) accepted the chat request.
+
+
+
+============ Started private chat! ============
+
+
+
+AAA : Hello!
+
+CCC : Nice to meet you!
+
+AAA : Goodbye!
+
+CCC : Going back to the Gwangjang!
+
+
+
+
+--------------------------------------------------------------
+==================== Welcome To The 광장! ====================
+
+
+NICKNAME: CCC
+
+[Private chatting]
+
+- 개인채팅 사용방법: 닉네임 앞 숫자 입력
+
+
+==============================================================
+--------------------------------------------------------------
+
+
+
+============ Returned to the 광장! ============
+
+============ AAA returned to the 광장! ============
+
+
+
+
+
+
+SRL 1 (AAA)
+SRL 2 (BBB)
+SRL 3 (CCC)
+TOTAL NAMED CLIENTS: 3
+
+Input message(CTRL+C to quit CHAT):
+
+```
+</details>
+
+### 채팅 상대 목록
+
+```sh
+SRL 1 (AAA)
+SRL 2 (BBB)
+SRL 3 (CCC)
+TOTAL NAMED CLIENTS: 3
 ```
 
-### 사용 방법
+위와 같이 <b>`SRL [번호] (닉네임)`</b>으로 표시되는 클라이언트들의 상태는 색상으로 구분된다.
 
--닉네임 앞 번호를 입력시 해당 유저와 채팅.
+- 자기 자신은 굵은 초록색으로 표시된다.
+- 채팅이 가능한, 즉 `광장`에 나와 있는 클라이언트는 굵은 흰색으로 표시된다.
+- 다른 사람과 개인 채팅 중인 클라이언트는 연한 자주색으로 표시된다.
+- 자신과 개인 채팅 중인 클라이언트는 진한 자주색으로 표시된다.
 
+채팅 상대 목록은 새 접속, 접속 해제 상황을 포함하여 클라이언트 상태에 변화가 발생할 때마다 `memberlist`로 수신받아 실시간으로 갱신된다. 또한 `Input message(CTRL+C to quit CHAT)` 또는 `Enter command(ESC to exit CMDMODE)`의 입력 문구 바로 위에 고정 출력되어 다른 사용자들의 채팅 상태들을 편리하게 확인할 수 있다.
 
-## Server log info
+## 서버 출력물에 대하여
+
+### Server log info
 
 ```c
 // Output example
 ```
-```txt
+```sh
 Received from A [B] (C)
 
 << HEARTBEAT at [t: %ld] from A [B] (C)
@@ -156,14 +284,6 @@ Name              | `cmdcode`      | `sender`    | `msg`
 ----------------- | -------------- | ----------- | ----------
 **Size constant** | `CMDCODE_SIZE` | `NAME_SIZE` | `BUF_SIZE`
 **Size**          | `4`            | `30`        | `1024 * n`
-
-## Nickname requisites
-
-### 닉네임 조건
-
-- Must not start with a `SPACE` character
-- Must be shorter than `NAME_SIZE (30)` characters
-- All names must be unique
 
 ## Emoji support
 
