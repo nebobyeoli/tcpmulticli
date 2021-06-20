@@ -738,45 +738,52 @@ void heartbeatSerialize(char *message, struct HeartBeatPacket *hbp)
 
 void clientListProcess(char* message)
 {
-    char tmp[5]={0,};
+    char tmp[5] = {0,};
     int offset = 0;
 
-    while(1)
+    while (1)
     {
         memcpy(&tmp, &message[offset], sizeof(int));
         offset += sizeof(int);
         int cmd_code = atoi(tmp);
 
-        if(cmd_code == HEARTBEAT_STR_CODE) // Heartbeat가 있을 경우
+        if (cmd_code == HEARTBEAT_STR_CODE) // Heartbeat가 있을 경우
         {
+            // member_srl
             memset(tmp, 0, sizeof(tmp));
             memcpy(&tmp, &message[offset], sizeof(int));
             offset += sizeof(int);
             int member_srl = atoi(tmp);
 
+            // nickname
             memset(&client_data[member_srl].nick, 0, sizeof(&client_data[member_srl].nick));
             memcpy(&client_data[member_srl].nick, &message[offset], sizeof(client_data[member_srl].nick));
             offset += sizeof(client_data[member_srl].nick);
 
+            // logon_status
             memset(tmp, 0, sizeof(tmp));
             memcpy(&tmp, &message[offset], sizeof(int));
             offset += sizeof(int);
             client_data[member_srl].logon_status = atoi(tmp);
 
+            // chat_status
             memset(tmp, 0, sizeof(tmp));
             memcpy(&tmp, &message[offset], sizeof(int));
             offset += sizeof(int);
             client_data[member_srl].chat_status = atoi(tmp);
 
+            // target
             memset(tmp, 0, sizeof(tmp));
             memcpy(&tmp, &message[offset], sizeof(int));
             offset += sizeof(int);
             client_data[member_srl].target = atoi(tmp);
 
+            // is_chatting
             memset(tmp, 0, sizeof(tmp));
             memcpy(&tmp, &message[offset], sizeof(int));
             offset += sizeof(int);
             client_data[member_srl].is_chatting = atoi(tmp);
+
         } else break;
     }
 }
@@ -799,7 +806,21 @@ void print_available_clients(int isFirstPrint)
     {
         if (client_data[i].nick[0])
         {
-            printf("SRL \033[1m%d\033[0m (%s)\r\n", i, client_data[i].nick);
+            if (i == MEMBER_SRL)
+            {
+                // if (client_data[i].target != -1)    printf("\033[0;1;35m");
+                printf("\033[0;1;32m");
+
+                printf("SRL \033[1m%d\033[21;24m (%s)\033[0m\r\n", i, client_data[i].nick);
+            }
+
+            else
+            {
+                if (client_data[i].target == MEMBER_SRL)    printf("\033[0;1;35mSRL %d (%s)\033[0m\r\n", i, client_data[i].nick);
+                else if (client_data[i].target != -1)       printf("\033[0;35mSRL %d (%s)\033[0m\r\n", i, client_data[i].nick);
+                else                                        printf("\033[0mSRL \033[1m%d\033[21;24m (%s)\033[0m\r\n", i, client_data[i].nick);
+            }
+
             cnt++;
         }
     }
@@ -817,7 +838,7 @@ void firstScene()
     CHAT_STATUS = 0;
 
     printf("\033[1;33m--------------------------------------------------------------\033[0m\r\n");
-    printf("\033[1;33m==================== Welcome To The CHAT! ====================\033[0m\r\n");
+    printf("\033[1;33m==================== Welcome To The 광장! ====================\033[0m\r\n");
     printf("\r\n\n");
 
     printf("\033[1;33mNICKNAME:\033[37m %s\033[0m\r\n\n", NNAME);
@@ -841,8 +862,17 @@ void close_client(int servclosed)
 
     close(sock);
 
-    if (cmdmode) moveCursorUp(PP_LINE_SPACE, 1, 0);
-    else         moveCursorUp(PP_LINE_SPACE + getLFcnt(blist), 1, bp);
+    if (cmdmode)
+    {
+        moveCursorUp(named_client_count + 3, 1, 0);
+        moveCursorUp(PP_LINE_SPACE, 1, 0);
+    }
+
+    else
+    {
+        moveCursorUp(named_client_count + 4, 1, bp);
+        moveCursorUp(PP_LINE_SPACE + getLFcnt(blist), 1, bp);
+    }
 
     if (servclosed) printf("\r\n\033[1;4;33mSERVER WAS CLOSED.\033[0m\r\n\n");
 
@@ -1051,7 +1081,8 @@ int main(int argc, char *argv[])
     fflush(0);
 
     // "[SELF] JOINED THE CHAT!"
-    read(sock, message, BUF_SIZE);
+    // OPENCHAT 재추가하면서, 서버에서도 memberlist보다 후로 내려짐
+    // read(sock, message, BUF_SIZE);
 
     //// FIRST 메인 화면 출력
 
@@ -1084,11 +1115,9 @@ int main(int argc, char *argv[])
     int req_from = -1;
     int req_to   = -1;
 
-    ////// MESSAGE COMMUNICATION LOOP //////
-
     // SET TIMEOUT OF read()
     // https://stackoverflow.com/a/2939145
-    // 이렇게 하면 아예 소켓 옵션으로 read()에 타임아웃을 걸 수 있어 유용하다.
+    // 이렇게 하면 아예 소켓 옵션으로 read()에 타임아웃을 걸 수 있다.
     // 바로 위 setsockopt()과는 별개임!
     setsockopt(sock, SOL_SOCKET, SO_RCVTIMEO, (const char*)&tr, sizeof(tr));
 
@@ -1105,11 +1134,14 @@ int main(int argc, char *argv[])
     int servmsg_printed = 0;
 
     // 시작할 때는 무조건 cmdmode = 1;
-    cmdmode = 1;
+    // cmdmode = 1;
+    cmdmode = 0;
 
     //// if (CHAT_TARGET != -1)
     //// : 타겟 설정 안 됨을 의미함!
     // sleep(20);
+
+    ////// MESSAGE COMMUNICATION LOOP //////
 
     while (1)
     {
@@ -1142,6 +1174,7 @@ int main(int argc, char *argv[])
             while (1)
             {
                 if (is_init && cmdcode == HEARTBEAT_STR_CODE) break;
+                else if (CHAT_TARGET != -1 && client_data[MEMBER_SRL].target == -1 && cmdcode == HEARTBEAT_STR_CODE) break;
                 else if (message[0]) break;
 
                 read(sock, message, BUF_SIZE);
@@ -1158,6 +1191,9 @@ int main(int argc, char *argv[])
                 // 처음 가입 시 1째로 수행
                 case HEARTBEAT_STR_CODE:
                 {
+                    char orig_target_name[NAME_SIZE] = {0,};
+                    memcpy(orig_target_name, client_data[CHAT_TARGET].nick, NAME_SIZE);
+
                     clientListProcess(message);
 
                     if (is_init) { printf("\r\n\n"); is_init = 0; }
@@ -1166,12 +1202,24 @@ int main(int argc, char *argv[])
                     // 즉 로컬상 CHAT_TARGET은 > -1인데 수신받은 client_data[]에서의 자기 target은 == -1일때
                     if (CHAT_TARGET != -1 && client_data[MEMBER_SRL].target == -1)
                     {
-                        CHAT_TARGET = -1;
-                        cmdmode = 1;
+                        // cmdmode = 1;
 
+                        moveCursorUp(named_client_count + 4, 1, 0);
                         moveCursorUp(1, 1, 0);
                         firstScene();
-                        print_available_clients(1);
+
+                        // 취급 as MESSAGE FROM SERVER
+                        printf("\r\n\n\n");
+                        servmsg_printed = 1;
+
+                        if (req_to == 0)    printf("\033[1;33m============ Returned to the 광장! ============\033[0m");
+                        else                printf("\033[1;35m============ %s left the private chat. ============\033[0m", orig_target_name);
+
+                        printf("\r\n\n\n");
+                        // print_available_clients(1);
+
+                        CHAT_TARGET = -1;
+
                         prompt_printed = 0;
                     }
 
@@ -1179,8 +1227,10 @@ int main(int argc, char *argv[])
                     // 처음 가입 시 1째로 수행
                     else if (CHAT_TARGET == -1)
                     {
-                        moveCursorUp(1, 1, 0);
-                        print_available_clients(0);
+                        moveCursorUp(named_client_count + 4, 1, 0);
+                        moveCursorUp(3, 1, 0);
+                        // print_available_clients(0);
+
                         prompt_printed = 0;
                     }
 
@@ -1203,6 +1253,7 @@ int main(int argc, char *argv[])
 
                     write(sock, message, BUF_SIZE);
 
+                    // MEMBERLIST REQUEST TO SERVER
                     char listget[BUF_SIZE] = {0,};
                     sprintf(listget, "%d", HEARTBEAT_REQ_CODE);
                     write(sock, listget, BUF_SIZE);
@@ -1216,8 +1267,10 @@ int main(int argc, char *argv[])
                 //// MODE : SINGLECHAT REQUEST from client ////
                 case SINGLECHAT_REQ_CODE:
                 {
-                    if (CHAT_TARGET == -1)
-                    {
+                    // if (CHAT_TARGET == -1)
+                    // {
+                        if (!cmdmode) cmdmode = 1;
+
                         req_from = atoi(&message[4]);
 
                         moveCursorUp(1, 1, 0);
@@ -1226,7 +1279,7 @@ int main(int argc, char *argv[])
                         fflush(0);
 
                         waiting_for_me = 1;
-                    }
+                    // }
 
                     break;
                 }
@@ -1234,20 +1287,51 @@ int main(int argc, char *argv[])
                 //// MODE : SINGLECHAT ACCEPT RESPONSE from client ////
                 case SINGLECHAT_RESP_CODE:
                 {
-                    if (CHAT_TARGET == -1)
-                    {
+                    // if (CHAT_TARGET == -1)
+                    // {
                         if (waiting_for_server)
                         {
                             waiting_for_server = 0;
 
                             moveCursorUp(1, 1, 0);
 
-                            if (atoi(&message[CMDCODE_SIZE * 2]))  // Is existing client
+                            if (atoi(&message[CMDCODE_SIZE * 2]))
                             {
-                                printf("\033[1;33m%d (%s)\033[37m is an existing client. Waiting for response...\033[0m\r\n", req_to, client_data[req_to].nick);
-                                fflush(0);
+                                if (req_to == 0)
+                                {
+                                    moveCursorUp(named_client_count + 4, 1, 0);
 
-                                waiting_for_target = 1;
+                                    // 입력 버퍼 리스트 초기화
+                                    list_destroy(clist);
+                                    clist = list_new();
+                                    list_rpush(clist, list_node_new(0));
+                                    cp = clist->head;
+
+                                    // 입력 버퍼 배열 초기화
+                                    memset(cmd, 0, CMD_SIZE);
+
+                                    global_curpos = 0;
+                                    cmdmode = 0;
+
+                                    prompt_printed = 0;
+
+                                    waiting_for_target = 0;
+                                    waiting_for_me = 0;
+
+                                    // MEMBERLIST REQUEST TO SERVER
+                                    char listget[BUF_SIZE] = {0,};
+                                    sprintf(listget, "%d", HEARTBEAT_REQ_CODE);
+                                    write(sock, listget, BUF_SIZE);
+                                }
+
+                                else
+                                {
+                                    // Is existing client
+                                    printf("\033[1;33m%d (%s)\033[37m is an existing client. Waiting for response...\033[0m\r\n", req_to, client_data[req_to].nick);
+                                    fflush(0);
+
+                                    waiting_for_target = 1;
+                                }
                             }
 
                             else
@@ -1269,19 +1353,34 @@ int main(int argc, char *argv[])
                                 printf("\033[1;33m%d (%s)\033[37m accepted the chat request.\033[0m\r\n", req_to, client_data[req_to].nick);
                                 fflush(0);
 
+                                // 원래 타겟 설정 해제
+                                if (CHAT_TARGET != -1)  client_data[CHAT_TARGET].target = -1;
+                                else                    client_data[MEMBER_SRL].target = req_to;
+
                                 client_data[MEMBER_SRL].target = req_to;
                                 client_data[req_to].target = MEMBER_SRL;
                                 CHAT_STATUS = 1;
                                 CHAT_TARGET = req_to;
 
-                                // "SERVER MESSAGE" 처럼 취급
+                                // 중복 코드
+                                // 취급 as MESSAGE FROM SERVER
                                 printf("\r\n\n\n");
-                                printf("\033[1;33m============ Started private chat! ============\033[0m");
+                                printf("\033[1;35m============ Started private chat! ============\033[0m");
                                 printf("\r\n\n\n");
                                 servmsg_printed = 1;
 
-                                // 이제 채팅할 수 있다.
+                                // 입력 버퍼 리스트 초기화
+                                list_destroy(clist);
+                                clist = list_new();
+                                list_rpush(clist, list_node_new(0));
+                                cp = clist->head;
+
+                                // 입력 버퍼 배열 초기화
+                                memset(cmd, 0, CMD_SIZE);
+
+                                global_curpos = 0;
                                 cmdmode = 0;
+
                                 prompt_printed = 0;
                             }
 
@@ -1292,7 +1391,7 @@ int main(int argc, char *argv[])
                                 fflush(0);
                             }
                         }
-                    }
+                    // }
 
                     break;
                 }
@@ -1302,16 +1401,35 @@ int main(int argc, char *argv[])
                 case OPENCHAT_CMD_CODE:
                 case SINGLECHAT_CMD_CODE:
                 {
-                    if (CHAT_TARGET == -1) break;
+                    // if (CHAT_TARGET == -1) break;
 
-                    if (cmdmode) global_curpos = getCurposFromListptr(clist, cp);
-                    else global_curpos = getCurposFromListptr(blist, bp);
+                    // discard [MYSELF] returned to the 광장!
+                    if (cmdcode == SERVMSG_CMD_CODE)
+                    {
+                        char content[MSG_SIZE] = {0,};
+                        memcpy(content, &message[CMDCODE_SIZE + NAME_SIZE], MSG_SIZE);
+                        if (strstr(content, client_data[MEMBER_SRL].nick) && strstr(content, "returned to the 광장!")) break;
+                    }
 
                     // PRINT MSG AFTER REMOVING PREVIOUS LINES
-                    moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
+
+                    if (cmdmode)
+                    {
+                        global_curpos = getCurposFromListptr(clist, cp);
+                        moveCursorUp(named_client_count + 3, 1, 0);
+                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
+                    }
+
+                    else
+                    {
+                        global_curpos = getCurposFromListptr(blist, bp);
+                        if (!is_init) moveCursorUp(named_client_count + 4, 1, 0);
+                        moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + getLFcnt(blist), 1, bp);
+                    }
+
                     if (is_init) { printf("\r\n"); is_init = 0; }
 
-                    // CODE 1000: MESSAGE FROM SERVER
+                    //// MESSAGE FROM SERVER
                     if (cmdcode == SERVMSG_CMD_CODE)
                     {
                         // 이전 메시지도 서버 메시지일 경우 줄넘김 간격 하나 줄여줌
@@ -1328,20 +1446,33 @@ int main(int argc, char *argv[])
                         }
 
                         if (strstr(&message[CMDCODE_SIZE + NAME_SIZE], "\033[33m")) printf("\033[33m");
+                        else if (strstr(&message[CMDCODE_SIZE + NAME_SIZE], "\033[35m")) printf("\033[35m");
                         printf("\033[1m============ %s ============\033[0m\r\n\n\n", &message[CMDCODE_SIZE + NAME_SIZE]);
                     }
 
-                    // CODE 3001: 개인 채팅
+                    //// MESSAGE FROM CLIENT
                     else
                     {
                         if (servmsg_printed) servmsg_printed = 0;
 
-                        if (cmdcode == SINGLECHAT_CMD_CODE)
+                        if (cmdcode == OPENCHAT_CMD_CODE)
+                        {
+                            if (CHAT_TARGET == -1)
+                            {
+                                memset(sender, 0, NAME_SIZE);
+                                memcpy(sender, &message[CMDCODE_SIZE], NAME_SIZE);
+
+                                printf("\r\n\033[1m%s\033[0m : %s\r\n", sender, &message[CMDCODE_SIZE + NAME_SIZE]);
+                            }
+                        }
+
+                        else if (cmdcode == SINGLECHAT_CMD_CODE)
                         {
                             printf("\r\n\033[1m%s\033[0m : %s\r\n", client_data[CHAT_TARGET].nick, &message[CMDCODE_SIZE * 3]);
-                            fflush(stdout);
                         }
                     }
+
+                    fflush(stdout);
 
                     prompt_printed = 0;
 
@@ -1366,10 +1497,10 @@ int main(int argc, char *argv[])
 
                     // erase "undefined" from stdout
                     // refine stdout
-                    if (is_init)    moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + 1, 1, 0);
+                    if (is_init)    moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + named_client_count + 1, 1, 0);
                     else            moveCursorUp(1, 1, 0);
                     // printf("imbroken ");
-                    // sleep(1);
+                    // sleep(1);    // when viewing "undefined" stdout checkpoint
 
                     break;
                 }
@@ -1382,7 +1513,9 @@ int main(int argc, char *argv[])
         {
             for (int i = 0; i < PP_LINE_SPACE; i++) printf("\r\n");
 
-            printf("%s", cmdmode ? cmd_message : pp_message);
+            print_available_clients(1);
+
+            printf("\r\n%s", cmdmode ? cmd_message : pp_message);
 
             if (cmdmode) reprintList(clist, cp, global_curpos + 2);
             else reprintList(blist, bp, global_curpos);
@@ -1396,6 +1529,8 @@ int main(int argc, char *argv[])
 
         FD_ZERO(&readfds);
         FD_SET(0, &readfds);  // fd 0 = stdin
+
+        //// MANAGING KEYBOARD INPUT ////
 
         // kbhit() 내에서 select() 돌아감, 추가적 select() 필요 없음
         // 그래서 timeval ts 지움
@@ -1425,7 +1560,7 @@ int main(int argc, char *argv[])
                     if (cmdmode)
                     {
                         // 타겟 있어야 나갈 수 있음!
-                        if (CHAT_TARGET == -1) break;
+                        // if (CHAT_TARGET == -1) break;
 
                         //// cmdmode에서 나갈 때
 
@@ -1438,6 +1573,7 @@ int main(int argc, char *argv[])
                         // 입력 버퍼 배열 초기화
                         memset(cmd, 0, CMD_SIZE);
 
+                        moveCursorUp(named_client_count + 3, 1, 0);
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE, 1, 0);
                         global_curpos = getCurposFromListptr(blist, bp);
                         cmdmode = 0;
@@ -1445,6 +1581,7 @@ int main(int argc, char *argv[])
 
                     else
                     {
+                        moveCursorUp(named_client_count + 4, 1, bp);
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + getLFcnt(blist), 1, bp);
                         global_curpos = 0;
                         cmdmode = 1;
@@ -1657,7 +1794,7 @@ int main(int argc, char *argv[])
 
                                 // "SERVER MESSAGE" 처럼 취급
                                 printf("\r\n\n\n");
-                                printf("\033[1;33m============ Started private chat! ============\033[0m");
+                                printf("\033[1;35m============ Started private chat! ============\033[0m");
                                 printf("\r\n\n\n");
                                 servmsg_printed = 1;
 
@@ -1691,7 +1828,7 @@ int main(int argc, char *argv[])
                                     moveCursorUp(2, 0, 0);
                                     printf("\033[1;33mNi de \033[4;7mCRAZY\033[0;1;33m ma?\033[0m\r\n> ");
                                     fflush(0);
-                                    break; // continue;
+                                    break;
                                 }
 
                                 req_to = atoi(cmd);
@@ -1702,21 +1839,30 @@ int main(int argc, char *argv[])
                                     moveCursorUp(2, 0, 0);
                                     printf("\033[1;33m호구짓 하지 마쇼!!\033[0m\r\n> ");
                                     fflush(0);
-                                    break; // continue;
+                                    break;
+                                }
+
+                                if (req_to == 0 && CHAT_TARGET == -1)
+                                {
+                                    moveCursorUp(2, 0, 0);
+                                    printf("\033[1;33mYou're already in the 광장!\033[0m\r\n> ");
+                                    fflush(0);
+                                    break;
                                 }
 
                                 if (client_data[req_to].chat_status > 0)
                                 {
                                     moveCursorUp(2, 0, 0);
-                                    printf("\033[1;33m해당 유저는 채팅중입니다\033[0m\r\n> ");
+                                    printf("\033[1;33m해당 유저는%s채팅중입니다.\033[0m\r\n> ", client_data[req_to].target == MEMBER_SRL ? " 당신과 " : " ");
                                     fflush(0);
-                                    break; // continue;
+                                    break;
                                 }
 
                                 send_singlechat_request(req_to);
 
                                 moveCursorUp(2, 1, 0);
-                                printf("Requested chat with client %d. Waiting for response...\r\n", req_to);
+                                if (req_to == 0)    printf("Requested to return to the 광장. Waiting for response...\r\n");
+                                else                printf("Requested chat with client %d. Waiting for response...\r\n", req_to);
 
                                 waiting_for_server = 1;
                             }
@@ -1750,23 +1896,44 @@ int main(int argc, char *argv[])
 
                         //// SEND
 
-                        // send_msg(OPENCHAT_CMD_CODE, buf);    // original
-                        send_singlechat(buf);
+                        if (CHAT_TARGET == -1)  send_msg(OPENCHAT_CMD_CODE, buf);    // original
+                        else                    send_singlechat(buf);
 
                         //// READ (CREATE OUTPUT FROM SERVER MESSAGE)
-
-                        // recv_msg(&cmdcode, sender, message);    // original
 
                         memset(buf, 0, BUF_SIZE);
                         read(sock, buf, BUF_SIZE);
 
+                        if (CHAT_TARGET == -1)  //// OPENCHAT
+                        {
+                            // recv_msg(&cmdcode, sender, message);    // original
+
+                            char cmd_code[5] = {0,};
+                            memcpy(&cmd_code, &buf, sizeof(int));
+                            cmdcode = atoi(cmd_code);
+
+                            memset(sender, 0, NAME_SIZE);
+                            memcpy(sender, &buf[CMDCODE_SIZE], NAME_SIZE);
+
+                            memset(message, 0, BUF_SIZE);
+                            memcpy(message, &buf[CMDCODE_SIZE + NAME_SIZE], MSG_SIZE);
+                        }
+
+                        else
+                        {
+                            memset(message, 0, BUF_SIZE);
+                            memcpy(message, &buf[CMDCODE_SIZE * 3], MSG_SIZE);
+                        }
+
+                        moveCursorUp(named_client_count + 4, 1, 0);
                         moveCursorUp(MIN_ERASE_LINES + PP_LINE_SPACE + lfcnt, 1, bp);
                         if (is_init) { printf("\r\n"); is_init = 0; }
 
                         if (servmsg_printed) servmsg_printed = 0;
 
                         // printf("\r\n%s sent: %s\r\n", sender, message); // original
-                        printf("\r\n\033[1m%s\033[0m : %s\r\n", client_data[MEMBER_SRL].nick, &buf[CMDCODE_SIZE * 3]);
+                        if (CHAT_TARGET == -1)  printf("\r\n\033[1m%s\033[0m : %s\r\n", sender, message);
+                        else                    printf("\r\n\033[1m%s\033[0m : %s\r\n", client_data[MEMBER_SRL].nick, message);
 
                         global_curpos = 0;
 
@@ -1830,6 +1997,8 @@ int main(int argc, char *argv[])
                     break;
                 }
             }
+
+            // if (isKeyboardWriting())
 
             fflush(stdout);
         }

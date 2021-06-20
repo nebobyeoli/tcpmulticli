@@ -483,7 +483,7 @@ void check_append_Func(char *msg, char *mdest, int clnt_cnt)
         memset(&index[remaining_len], 0, remaining_len + 1);
 
         // 클라이언트 번호 랜덤 선택 후 반환
-        randnum = rand() % clnt_cnt;
+        while ((randnum = rand() % clnt_cnt) < FIRST_SRL);
 
         strcpy(message, pickMsg);
         strcat(message, names[randnum]);
@@ -1712,12 +1712,12 @@ int main(int argc, char **argv)
                     // 연결 해제된 클라이언트의 이름을 지워 준다
                     if (names[i][0])
                     {
-                        // SEND DISCONNECTED INFORMATION TO ALL CLIENTS
-                        memset(message, 0, BUF_SIZE);
-                        sprintf(message, "\033[33m%s left the chat.", names[i]);
-
-                        sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, message, message);
                         client_data[i].logon_status = 0; // 로그오프 처리
+                        client_data[i].chat_status = 0;
+                        client_data[i].is_chatting = 0;
+
+                        memset(message, 0, BUF_SIZE);
+                        sprintf(message, "\033[33m%s left the 광장. Goodbye, %s!", names[i], names[i]);
 
                         memset(names[i], 0, NAME_SIZE);
                         memset(client_data[i].nick, 0, NAME_SIZE);
@@ -1725,7 +1725,11 @@ int main(int argc, char **argv)
                         client_data[client_data[i].target].target = -1;
                         client_data[i].target = -1;
 
+                        // RESEND MEMBERLIST TO ALL CLIENTS
                         memberlist_serialize_sendAll(clnt_cnt);
+
+                        // SEND DISCONNECTED INFORMATION TO ALL CLIENTS as SERVMSG
+                        sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, message, message);
                     }
                 }
 
@@ -1787,6 +1791,33 @@ int main(int argc, char **argv)
 
                             printf("\033[1;33mSinglechat Requested\033[0m from %d [%d] to %d [%d]\r\n", i, client[i], req_to, client[req_to]);
 
+                            // '0'과 채팅한다 했을 때: [RETURN TO 광장]으로 취급
+                            if (req_to == 0 && FIRST_SRL > 0)
+                            {
+                                send_singlechat_response(serv_sock, client[i], 1);
+
+                                int orig_target = client_data[i].target;
+
+                                client_data[orig_target].target = -1;
+                                client_data[orig_target].chat_status = 0;
+
+                                client_data[i].target = -1;
+                                client_data[i].chat_status = 0;
+
+                                memberlist_serialize_sendAll(clnt_cnt);
+
+                                // Similar with:
+                                // SEND JOIN INFORMATION TO ALL CLIENTS
+
+                                memset(message, 0, BUF_SIZE);
+                                sprintf(message, "\033[33m%s returned to the 광장!", names[i]);
+                                sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, message, message);
+
+                                memset(message, 0, BUF_SIZE);
+                                sprintf(message, "\033[33m%s returned to the 광장!", names[orig_target]);
+                                sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, message, message);
+                            }
+
                             // 해당 클라이언트 연결이 없거나 이름 설정 안 되어 있음
                             if (client[req_to] == -1 || names[req_to][0] <= 0)
                             {
@@ -1814,17 +1845,33 @@ int main(int argc, char **argv)
                             if (accepted)
                             {
                                 printf("\033[1;32mStarting private chat:\033[0m %d (%s) <==> %d (%s)\r\n", resp_to, names[resp_to], i, names[i]);
+
+                                int orig_target = client_data[resp_to].target;
+
+                                printf("\r\norig target: %d [%d] ==> %d [%d]\r\n", i, client[i], client_data[i].target, client[client_data[i].target]);
+                                if (orig_target != -1) printf("\r\norig target: %d [%d] ==> %d [%d]\r\n", orig_target, client[orig_target], client_data[orig_target].target, client[client_data[orig_target].target]);
+                                printf("\r\n");
+
+                                // 원래 상대의 타켓 설정 해제
+                                if (client_data[orig_target].target != -1)
+                                {
+                                    client_data[orig_target].target = -1;
+                                    client_data[orig_target].chat_status = 0;
+
+                                    // memset(message, 0, BUF_SIZE);
+                                    // sprintf(message, "%d", SERVMSG_CMD_CODE);
+                                    // sprintf(&message[CMDCODE_SIZE], "\033[35m%s left the private chat.", names[i]);
+
+                                    // write(client[orig_target], message, BUF_SIZE);
+                                }
+
                                 client_data[i].target = resp_to;
+                                client_data[i].chat_status = 1;
+
                                 client_data[resp_to].target = i;
+                                client_data[resp_to].chat_status = 1;
 
-                                // // Create msg for "Started private chat!"
-                                // memset(buf, 0, BUF_SIZE);
-                                // sprintf(buf, "%d", SERVMSG_CMD_CODE);
-                                // sprintf(&buf[CMDCODE_SIZE], "%s", serv_name);
-                                // sprintf(&buf[CMDCODE_SIZE + NAME_SIZE], "\033[33mStarted private chat!");    // \033[0m 마감 처리는 클라이언트에서 함
-
-                                // write(client[i], buf, BUF_SIZE);
-                                // write(client[resp_to], buf, BUF_SIZE);
+                                memberlist_serialize_sendAll(clnt_cnt);
                             }
 
                             else
@@ -1870,16 +1917,16 @@ int main(int argc, char **argv)
 
                                 // SEND JOIN INFORMATION TO ALL CLIENTS
                                 memset(message, 0, BUF_SIZE);
-                                sprintf(message, "\033[33m%s joined the chat!", names[i]);
+                                sprintf(message, "\033[33m%s joined the 광장!", names[i]);
 
                                 // 로그온 상태로 전환
                                 client_data[i].logon_status = 1;
 
-                                // ~ joined the chat!
-                                sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, message, message);
-
                                 // 갱신된 클라이언트 memberlist 전송
                                 memberlist_serialize_sendAll(clnt_cnt);
+
+                                // ~ joined the chat!
+                                sendAll(clnt_cnt, SERVMSG_CMD_CODE, serv_name, message, message);
                             }
 
                             break;
