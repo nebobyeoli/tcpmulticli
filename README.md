@@ -90,6 +90,8 @@ Branch name | Pull request | Description
 
 `HEARTBEAT` 요청을 받은 클라이언트는 `HEARTBEAT` 전송과 동시에 `memberlist`(클라이언트 목록)을 서버에 요청하고 수신받는다.
 
+구조체 순회 중 현재 시간과 마지막으로 `HEARTBEAT`를 수신받은 시간(`last_heartbeat_time`)이 `10초` 이상 차이 나면 해당 클라이언트의 `logon_status`를 `0`으로 설정한다.
+
 TCP 소켓에서 클라이언트와의 연결이 끊어지면, 서버는 해당 클라이언트를 정리한 후 나머지 클라이언트들에게 `%s left the 광장.`이라는 문구를 전송한다.
 
 ## 클라이언트 실행
