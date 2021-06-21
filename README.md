@@ -29,8 +29,8 @@ char TEAM_MULCAST_ADDR[] = "239.0.100.1";
 
 직무 | 구현 항목
 ---- | --------
-![메인개발자](https://img.shields.io/badge/개발-메인개발자-blueviolet) ![author](https://img.shields.io/badge/관리자-author-ff5ecc) | 입출력 체계화, UDP 송신, TCP 개인/오픈 채팅 및 서버 메시지, 이모티콘 사용, 색상 정리
-![메인개발자](https://img.shields.io/badge/개발-메인개발자-blueviolet) ![문서 총괄](https://img.shields.io/badge/관리자-문서%20총괄-ff5ecc) | `HEARTBEAT` 체계화, `memberlist` 송수신 및 체계화, UDP 수신 및 TCP 가입
+![메인개발자](https://img.shields.io/badge/개발-메인개발자-blueviolet) ![author](https://img.shields.io/badge/관리자-author-ff5ecc) | 입출력 체계화, UDP 송신, TCP 송수신, 이모티콘 사용, 색상 정리
+![메인개발자](https://img.shields.io/badge/개발-메인개발자-blueviolet) ![문서 총괄](https://img.shields.io/badge/관리자-문서%20총괄-ff5ecc) | `HEARTBEAT` 체계화, `memberlist` 송수신, UDP 수신 및 TCP 가입
 ![서브개발자](https://img.shields.io/badge/개발-서브개발자-576aff) | `HEARTBEAT` 주기화, 메인 화면, 주사위, 제비뽑기
 ![보조개발자](https://img.shields.io/badge/개발-보조개발자-8aa9ff) | `HEARTBEAT` 주기화
 
