@@ -7,7 +7,7 @@
 char TEAM_MULCAST_ADDR[] = "239.0.100.1";
 ```
 
-<!-- 평소 당연하다고 여기는 출력 모양을 하나하나 직접 구현해 내는 게 가장 까다로우면서도 도전적이었던 것 같다. -->
+<!-- 단락 링크는 main으로 merge 시 제대로 작동되도록 작성함 -->
 
 ## 팀명
 
@@ -535,21 +535,15 @@ Key     | `getch()` value(s)
 
 # 부가기능
 
-## Emoji support
+## 이모티콘 사용
 
-<!-- `temporarily. quadrupled the BUF_SIZE because of it`<br> -->
+메시지 모드에서 `:이모티콘파일명:`을 입력하면, 서버에서 `:이모티콘파일명:`들을 각 토큰에 대응하는 이모티콘 파일의 내용으로 교환하여 수신자에게 전송한다. 구현은 `strstr()`의 메모리 위치 반환값의 차를 이용하여 인덱스를 구하고, 이를 기준으로 배열을 분할하여 중간 삽입을 수행하는 방식을 사용하였다.
 
 ### 이모티콘 추가법
-
-<!-- - 나는 능력자다 - -->
 
 - 서버 PC에서 `./mulfd`를 실행하기 전, 사용하고자 하는 이모티콘을 `./emojis/`에 `txt` 파일로 추가한다.
 - 이모티콘 `txt`파일은 하나의 개행 문자로 끝나도록 한다.
 - 파일명은 해당 이모티콘에 사용하고자 하는 **10자 이내의** 명령어로 한다.
-
-### 이모티콘 사용법
-
-메시지 모드에서 `:이모티콘파일명:`를 전송하면, 서버에서 `:이모티콘파일명:`을 인식하여 
 
 ### 주의사항
 
@@ -563,7 +557,7 @@ Usage     | File               | Appearance
 --------- | ------------------ | ----------
 **:myh:** | `./emojis/myh.txt` | ⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢠⣴⣾⣿⣶⣶⣆⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀⢀<br>⢀⢀⢀⣀⢀⣤⢀⢀⡀⢀⣿⣿⣿⣿⣷⣿⣿⡇⢀⢀⢀⢀⣤⣀⢀⢀⢀⢀⢀<br>⢀⢀ ⣶⢻⣧⣿⣿⠇ ⢸⣿⣿⣿⣷⣿⣿⣿⣷⢀⢀⢀⣾⡟⣿⡷⢀⢀⢀⢀<br>⢀⢀⠈⠳⣿⣾⣿⣿⢀⠈⢿⣿⣿⣷⣿⣿⣿⣿⢀⢀⢀⣿⣿⣿⠇⢀⢀⢀⢀<br>⢀⢀⢀⢀⢿⣿⣿⣿⣤⡶⠺⣿⣿⣿⣷⣿⣿⣿⢄⣤⣼⣿⣿⡏⢀⢀⢀⢀⢀<br>⢀⢀⢀⢀⣼⣿⣿⣿⠟⢀⢀⠹⣿⣿⣿⣷⣿⣿⣎⠙⢿⣿⣿⣷⣤⣀⡀⢀⢀<br>⢀⢀⢀ ⢸⣿⣿⣿⡿⢀⢀⣤⣿⣿⣿⣷⣿⣿⣿⣄⠈⢿⣿⣿⣷⣿⣿⣷⡀⢀<br>⢀⢀⢀⣿⣿⣿⣿⣷⣀⣀⣠⣿⣿⣿⣿⣷⣿⣷⣿⣿⣷⣾⣿⣿⣿⣷⣿⣿⣿⣆<br>⣿⣿⠛⠋⠉⠉⢻⣿⣿⣿⣿⡇⡀⠘⣿⣿⣿⣷⣿⣿⣿⠛⠻⢿⣿⣿⣿⣿⣷⣦<br>⣿⣿⣧⡀⠿⠇⣰⣿⡟⠉⠉⢻⡆⠈⠟⠛⣿⣿⣿⣯⡉⢁⣀⣈⣉⣽⣿⣿⣿⣷<br>⡿⠛⠛⠒⠚⠛⠉⢻⡇⠘⠃⢸⡇⢀⣤⣾⠋⢉⠻⠏⢹⠁⢤⡀⢉⡟⠉⡙⠏⣹<br>⣿⣦⣶⣶⢀⣿⣿⣿⣷⣿⣿⣿⡇⢀⣀⣹⣶⣿⣷⠾⠿⠶⡀⠰⠾⢷⣾⣷⣶⣿<br>⣿⣿⣿⣿⣇⣿⣿⣿⣷⣿⣿⣿⣇⣰⣿⣿⣷⣿⣿⣷⣤⣴⣶⣶⣦⣼⣿⣿⣿⣷<br>`[\n]` |
 **:face:** | `./emojis/face.txt` | `[\n]`<br>( ͡° ͜ʖ ͡°)( ͠° ͟ʖ ͡°)( ͡~ ͜ʖ ͡°)( ͡ʘ ͜ʖ ͡ʘ)( ͡o ͜ʖ ͡o)<br>`[\n]`
-<!-- **:bbird:** | `./emojis/bbird.txt` | x -->
+<!-- **:bbird:** | `./emojis/bbird.txt` |  -->
 
 ## 주사위
 
@@ -604,10 +598,9 @@ Input message(CTRL+C to quit):
 
 ## 제비뽑기
 
-메시지 모드에서 `/pickme`를 보내면 랜덤으로 한 명의 닉네임이 출력된다. 
+메시지 모드에서 `/pickme`를 입력하면 서버에서 범위 내의 클라이언트 번호 중 하나를 랜덤으로 선택하고 그의 닉네임을 전송한다.
 
 ### 사용 예
-
 
 입력 예시
 ```sh
@@ -618,10 +611,16 @@ Input message(CTRL+C to quit):
 출력 예시
 ```sh
 나만 아니면 돼!!!!!!
-이번 당번은.....    : (랜덤 닉네임)
+이번 당번은.....    : [랜덤 닉네임]
 ```
 
+# 그 외
+
+평소 당연하다고 여기는 출력 모양을 하나하나 직접 구현해 낸 부분이 가장 까다로우면서도 도전적이었던 것 같다.
+
 ## Notes to self.
+
+출처가 있는 항목들은 가져온 코드들이고 출처가 없는 항목들은 직접 작성한 코드 내용이다
 
 ### 소스 중 특정 일부씩 참고용
 
@@ -818,7 +817,7 @@ Input message(CTRL+C to quit):
 
 ##
 
-### `알아낸 거 목록`
+### 새로 알게 된 것들
 
 <details>
   <summary><b>Debug logging without altering output to stdout</b></summary><br>
@@ -976,6 +975,44 @@ Input message(CTRL+C to quit):
       return 0;
   }
 
+  ```
+</details>
+
+<details>
+  <summary><b>sprintf는 sprintf할 문자열 이후에 NULL 문자만 하나 넣고 그 뒤 데이터를 초기화해 주지 않는다</b></summary><br>
+
+  ```c
+  #include <stdio.h>
+  #include <stdlib.h>
+  #include <string.h>
+  
+  // integer to ascii
+  void itoa(int i, char *st)
+  {
+      sprintf(st, "%d", i);
+      return;
+  }
+  
+  int main(void)
+  {
+      char st[] = "The big brown fox";
+      printf("%s %ld\n", st, sizeof(st));
+  
+      memset(st, 0, sizeof(st));
+      itoa(50, st);
+      sprintf(st, "50");
+  
+      printf("%s %ld\n", st, sizeof(st));
+  
+      printf("Data:\n");
+      for (int i = 0; i < sizeof(st); i++) printf("%d\t", st[i]);
+      printf("\n");
+      for (int i = 0; i < sizeof(st); i++) printf("%c\t", st[i]);
+      printf("\n");
+  
+      return 0;
+  }
+  
   ```
 </details>
 
