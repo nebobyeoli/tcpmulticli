@@ -5,19 +5,6 @@
 // Copyright (c) 2010 TJ Holowaychuk <tj@vision-media.ca>
 //
 
-//
-// Modified for nebobyeoli/tcpmulticli:
-//
-// The original clibs/list used [void pointer] types for node vals.
-//
-// But here it uses an integer [char] type instead,
-// since void pointers cannot be dereferenced without an int* cast
-// and it was the best possible solution for this 'node value not as a pointer' situation.
-//
-// - even with the cast(removes the warnings), the casted val would be recognized as a memory address
-// - and thus it crashes as a [Segmentation fault (core dumped)] after server init stdouts.
-//
-
 #ifndef __CLIBS_LIST_H__
 #define __CLIBS_LIST_H__
 
@@ -64,7 +51,7 @@ typedef enum {
 typedef struct list_node {
   struct list_node *prev;
   struct list_node *next;
-  char val;
+  void *val;
 } list_node_t;
 
 /*
@@ -75,8 +62,8 @@ typedef struct {
   list_node_t *head;
   list_node_t *tail;
   unsigned int len;
-  void (*free)(char val);
-  int (*match)(char a, char b);
+  void (*free)(void *val);
+  int (*match)(void *a, void *b);
 } list_t;
 
 /*
@@ -91,7 +78,7 @@ typedef struct {
 // Node prototypes.
 
 list_node_t *
-list_node_new(char val);
+list_node_new(void *val);
 
 // list_t prototypes.
 
@@ -105,7 +92,7 @@ list_node_t *
 list_lpush(list_t *self, list_node_t *node);
 
 list_node_t *
-list_find(list_t *self, char val);
+list_find(list_t *self, void *val);
 
 list_node_t *
 list_at(list_t *self, int index);

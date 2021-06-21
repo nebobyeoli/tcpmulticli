@@ -1,0 +1,3 @@
+date of download: 2021-06-01
+Repository: https://github.com/clibs/list
+Repository at this point in the history: https://github.com/clibs/list/tree/6c16b69f14de870ed89d0bcac948d85b7a73513f
