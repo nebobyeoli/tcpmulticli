@@ -1,7 +1,5 @@
 # TCP multiple clients
 
-#### `18WP 2021`
-
 ```c
 // 지정된 멀티캐스팅 주소
 char TEAM_MULCAST_ADDR[] = "239.0.100.1";
