@@ -9,23 +9,7 @@ char TEAM_MULCAST_ADDR[] = "239.0.100.1";
 
 <!-- 단락 링크는 main으로 merge 시 제대로 작동되도록 작성함 -->
 
-## 팀명
-
-베리비안의 해적
-
 ## 수행 구성원
-
-<!-- 아무리 생각해도 "중간개발자"는 말이 이상하단 말이야... -->
-
-이름 | 직무 | 기록
----- | ---- | ----
-양희수 | ![메인개발자](https://img.shields.io/badge/개발-메인개발자-blueviolet) ![author](https://img.shields.io/badge/관리자-author-ff5ecc) | ![완료보고서](https://img.shields.io/badge/문서-완료보고서-ff0048)
-김영상 | ![메인개발자](https://img.shields.io/badge/개발-메인개발자-blueviolet) ![문서 총괄](https://img.shields.io/badge/관리자-문서%20총괄-ff5ecc) | ![요구사항명세서](https://img.shields.io/badge/문서-요구사항명세서-ff4000) ![기능정의서](https://img.shields.io/badge/문서-기능정의서-00bf36) ![설계서](https://img.shields.io/badge/문서-설계서-00cccc)
-김창진 | ![서브개발자](https://img.shields.io/badge/개발-서브개발자-576aff) | ![설계서](https://img.shields.io/badge/문서-설계서-00cccc) ![notion](https://img.shields.io/badge/한눈에보기-notion-ff82b2)
-김진우 | ![보조개발자](https://img.shields.io/badge/개발-보조개발자-8aa9ff) | ![시험명세서](https://img.shields.io/badge/문서-시험명세서-ccb25c)
-이연호 | ![보조개발자](https://img.shields.io/badge/개발-보조개발자-8aa9ff) | ![시험명세서](https://img.shields.io/badge/문서-시험명세서-ccb25c)
-정성원 | ![none](https://img.shields.io/badge/-none-b1b1b1) |
-이용우 | ![none](https://img.shields.io/badge/-none-b1b1b1) |
 
 직무 | 구현 항목
 ---- | --------
